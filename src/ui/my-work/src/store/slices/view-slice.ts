@@ -2,11 +2,12 @@
 // (persisted: index.ts names the fields).
 import { OTHER_FOCUS_AREA_ID } from '../../data.ts'
 import { resolveFocusAreaId } from '../../live/to-focus-model.ts'
-import { usageReport } from '../../live/usage.ts'
+import { COMPANION_DEFAULT_NAME, companionName } from '../../companion/companion-sprites.ts'
+import { usageReport, usageViewOf } from '../../live/usage.ts'
 import type { SliceCreator } from '../create-store.ts'
 import type { OpenRequest, Page, Section, StoreEnvironment, ViewSlice, ViewState } from '../store-types.ts'
 
-const SECTIONS: readonly Section[] = ['work', 'rules', 'suggested', 'past-focus']
+const SECTIONS: readonly Section[] = ['work', 'grove', 'rules', 'suggested', 'past-focus']
 
 interface Route { page: Page; section: Section; focusChoice: string | null; requestId: string | null; theme: boolean | null }
 
@@ -43,7 +44,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
     const previous = get().view.section
     set((state) => { Object.assign(state.view, change) })
     const next = get().view.section
-    if (environment.reportsUsage && next !== previous) environment.sendUsage(usageReport(next, previous))
+    if (environment.reportsUsage && next !== previous) environment.sendUsage(usageReport(usageViewOf(next), usageViewOf(previous)))
     const current = new URL(environment.href())
     const url = writeRoute(current, get().view)
     if (url.href !== current.href) environment.writeUrl(url, replace)
@@ -67,6 +68,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       filter: 'all',
       sort: 'attention',
       focusArtwork: 'full',
+      companion: { shown: true, name: COMPANION_DEFAULT_NAME, palette: 'ember' },
     },
 
     goToPage: (page) => navigate({ section: page, focusChoice: null }),
@@ -103,7 +105,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
         state.view.focusChoice = next.focusChoice
         state.view.openRequest = !next.requestId ? null : open?.id === next.requestId ? open : { id: next.requestId, fromLiveFeed: null, fallback: null }
       })
-      if (environment.reportsUsage && next.section !== previous) environment.sendUsage(usageReport(next.section, previous))
+      if (environment.reportsUsage && next.section !== previous) environment.sendUsage(usageReport(usageViewOf(next.section), usageViewOf(previous)))
       get().reconcileOpenRequest()
     },
 
@@ -111,7 +113,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       const url = new URL(environment.href())
       url.searchParams.set('setup', '1')
       environment.writeUrl(url, true)
-      if (environment.reportsUsage) environment.sendUsage(usageReport('setup', get().view.section))
+      if (environment.reportsUsage) environment.sendUsage(usageReport('setup', usageViewOf(get().view.section)))
       set((state) => { state.view.page = 'setup' })
     },
 
@@ -132,7 +134,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       if (!environment.reportsUsage || openReported) return
       openReported = true
       const { page, section } = get().view
-      environment.sendUsage(usageReport(page === 'setup' ? 'setup' : section, null))
+      environment.sendUsage(usageReport(page === 'setup' ? 'setup' : usageViewOf(section), null))
     },
 
     setWorkspace: (change) => set((state) => { Object.assign(state.view.workspace, change) }),
@@ -142,6 +144,10 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
     setFilter: (filter) => set((state) => { state.view.filter = filter }),
     setSort: (sort) => set((state) => { state.view.sort = sort }),
     setFocusArtwork: (focusArtwork) => set((state) => { state.view.focusArtwork = focusArtwork }),
+    setCompanion: (change) => set((state) => {
+      Object.assign(state.view.companion, change)
+      state.view.companion.name = companionName(state.view.companion.name)
+    }),
   }
 }
 

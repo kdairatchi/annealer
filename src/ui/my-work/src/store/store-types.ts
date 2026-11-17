@@ -3,6 +3,7 @@
 import type { FocusChange, Request } from '../data.ts'
 import type { OwnerRule, RuleChange } from '../data-rules.ts'
 import type { ConnectionStatus } from '../live/connection-status.ts'
+import type { CompanionPalette } from '../companion/companion-sprites.ts'
 import type { ReviewResult } from '../live/review-response.ts'
 import type { RuleDecision, SavedRuleDecision } from '../live/rule-actions.ts'
 import type { RequestChange } from '../live/update-queue.ts'
@@ -63,13 +64,15 @@ export interface WorkSlice {
 
 /** `setup` is the install funnel (`?setup=1`): a full page outside the nav that becomes My Work when it completes. */
 export type Page = 'setup' | 'app'
-export type NavPage = 'work' | 'rules'
+export type NavPage = 'work' | 'grove' | 'rules'
 /** What the main column shows: a page, or one of the focus views the rail opens. */
 export type Section = NavPage | 'suggested' | 'past-focus'
 export type WorkListView = 'cards' | 'list' | 'agents' | 'team'
 export type WorkFilter = 'all' | 'needs-you' | 'working' | 'shipped' | 'closed'
 export type WorkSort = 'attention' | 'started' | 'progress'
 export type FocusArtwork = 'full' | 'compact' | 'off'
+/** The pixel companion: whether it is on screen, what it is called and which colours it wears. */
+export interface CompanionPreferences { shown: boolean; name: string; palette: CompanionPalette }
 export interface Workspace { mode: 'home' | 'web'; team: boolean; connected: boolean }
 export type FocusSelection = { kind: 'area'; focusAreaId: string } | { kind: 'suggested' } | { kind: 'past-focus' } | null
 
@@ -94,6 +97,7 @@ export interface ViewState {
   sort: WorkSort
   /** Display density only; changing it never requests image generation. */
   focusArtwork: FocusArtwork
+  companion: CompanionPreferences
 }
 
 export interface ViewSlice {
@@ -117,6 +121,7 @@ export interface ViewSlice {
   setFilter: (filter: WorkFilter) => void
   setSort: (sort: WorkSort) => void
   setFocusArtwork: (focusArtwork: FocusArtwork) => void
+  setCompanion: (change: Partial<CompanionPreferences>) => void
 }
 
 // ---------- Rules: the receipts and Undo for My Rules saves ----------

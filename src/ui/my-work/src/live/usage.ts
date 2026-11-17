@@ -7,6 +7,12 @@
 export type UsageView = 'setup' | 'work' | 'rules' | 'suggested' | 'past-focus'
 export type UsageReport = { event: 'opened'; view: UsageView } | { event: 'switched'; view: UsageView; previousView: UsageView }
 
+/**
+ * The Grove is this fork's page and is not one of the worker's counted page ids, so showing it is counted as My Work,
+ * the page it reads from. Moving between the two is then the same page and is not reported at all.
+ */
+export const usageViewOf = (section: UsageView | 'grove'): UsageView => section === 'grove' ? 'work' : section
+
 const WORK_VIEW_USAGE_URL = '/api/work-view/usage'
 
 /** The report for showing `view`: an open when no page was shown before, a switch otherwise. Showing the same page again is nothing to count. */

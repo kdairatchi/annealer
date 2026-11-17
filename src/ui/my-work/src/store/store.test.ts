@@ -360,7 +360,7 @@ describe('display preferences', () => {
     first.getState().setFocusArtwork('compact')
     first.getState().goToPage('rules')
     const saved = JSON.parse(storage.items.get('claude-mem:my-work:preferences')!)
-    assert.deepEqual(saved.state, { listView: 'list', filter: 'closed', sort: 'attention', focusArtwork: 'compact' })
+    assert.deepEqual(saved.state, { listView: 'list', filter: 'closed', sort: 'attention', focusArtwork: 'compact', companion: { shown: true, name: 'Cinder', palette: 'ember' } })
     const next = testStore({ storage }).store.getState().view
     assert.deepEqual([next.listView, next.filter, next.focusArtwork, next.section], ['list', 'closed', 'compact', 'work'])
   })
@@ -378,6 +378,34 @@ describe('display preferences', () => {
     first.getState().setFocusArtwork('off')
     const next = testStore({ storage }).store.getState().view
     assert.deepEqual([next.listView, next.filter, next.sort, next.focusArtwork], ['list', 'working', 'started', 'off'])
+  })
+})
+
+describe('the Grove and the companion', () => {
+  it('opens the Grove from ?view=grove and writes it back to the URL', () => {
+    const { store, urls } = testStore({ href: 'http://localhost/?view=grove' })
+    assert.equal(store.getState().view.section, 'grove')
+    store.getState().goToPage('work')
+    store.getState().goToPage('grove')
+    assert.equal(new URL(urls.at(-1)!.href).searchParams.get('view'), 'grove')
+  })
+
+  it('counts the Grove as My Work, so moving between them reports nothing new', () => {
+    const { store, usage } = testStore()
+    store.getState().goToPage('grove')
+    store.getState().goToPage('work')
+    store.getState().goToPage('rules')
+    assert.deepEqual(usage, [{ event: 'switched', view: 'rules', previousView: 'work' }])
+  })
+
+  it('remembers the companion, cleans its name, and falls back field by field', () => {
+    const storage = memoryStorage()
+    const first = testStore({ storage }).store
+    first.getState().setCompanion({ name: '   Forge    Goblin of the North  ', palette: 'tide' })
+    first.getState().setCompanion({ shown: false })
+    assert.deepEqual(testStore({ storage }).store.getState().view.companion, { shown: false, name: 'Forge Goblin of', palette: 'tide' })
+    const odd = memoryStorage({ 'claude-mem:my-work:preferences': JSON.stringify({ version: 1, state: { companion: { shown: 'yes', name: '', palette: 'neon' } } }) })
+    assert.deepEqual(testStore({ storage: odd }).store.getState().view.companion, { shown: true, name: 'Cinder', palette: 'ember' })
   })
 })
 
