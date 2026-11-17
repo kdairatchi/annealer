@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { MotionConfig } from 'motion/react'
-import { CreditCardIcon, InboxIcon, ListChecksIcon, UsersIcon } from 'lucide-react'
+import { CreditCardIcon, InboxIcon, ListChecksIcon, SproutIcon, UsersIcon } from 'lucide-react'
 import { LOCALES, LOCALE_NAMES, useI18n, type Locale } from '@/lib/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { Navbar, NavBody } from '@/components/aceternity/resizable-navbar'
 import { Notch } from '@/components/aceternity/notch'
 import { StickyBanner } from '@/components/aceternity/sticky-banner'
 import { CmemMark } from '@/components/brand'
+import { Companion } from '@/companion/companion'
 import { FocusChipRow, FocusRail, PastFocusLink, SIDE_NAV_PILL } from '@/components/focus-nav'
 import { cn } from '@/lib/utils'
 import { MyWork } from '@/pages/my-work'
@@ -32,6 +33,7 @@ import { workerMediaSource } from '@/components/observation-media/worker-media-s
 /** MY FOCUS sits above these: its areas, Other and Suggested (focus-nav.tsx). Past focus is at the bottom of the rail. */
 const PAGES: { id: NavPage; label: string; icon: typeof InboxIcon; section: string }[] = [
   { id: 'work', label: 'My Work', icon: InboxIcon, section: 'Monitor' },
+  { id: 'grove', label: 'Grove', icon: SproutIcon, section: 'Grow' },
   { id: 'rules', label: 'My Rules', icon: ListChecksIcon, section: 'Steer' },
 ]
 const NAV_SECTIONS = [...new Set(PAGES.map((entry) => entry.section))]
@@ -117,6 +119,7 @@ function LanguageSelector() {
 const SetupPage = lazy(() => import('@/setup/setup-page'))
 const MyRules = lazy(() => import('@/pages/my-rules').then(module => ({ default: module.MyRules })))
 const SuggestedAreas = lazy(() => import('@/pages/suggested-areas').then(module => ({ default: module.SuggestedAreas })))
+const Grove = lazy(() => import('@/pages/grove').then(module => ({ default: module.Grove })))
 const PastFocus = lazy(() => import('@/pages/past-focus').then(module => ({ default: module.PastFocus })))
 const RequestDetail = lazy(() => import('@/components/request-detail').then(module => ({ default: module.RequestDetail })))
 
@@ -293,6 +296,7 @@ function LoadedApp() {
                     {view === 'work' && <MyWork focusAreaId={focusAreaId} onOpen={openRequestDrawer} onOpenFocus={goToFocus} onOpenRules={() => goToPage('rules')} />}
                     {view === 'suggested' && <SuggestedAreas onOpenFocus={goToFocus} />}
                     {view === 'past-focus' && <PastFocus onOpenFocus={goToFocus} />}
+                    {view === 'grove' && <Grove onOpenRequest={openRequestDrawer} onOpenFocus={goToFocus} />}
                     {view === 'rules' && <MyRules />}
                   </Suspense>
                 </main>
@@ -325,6 +329,8 @@ function LoadedApp() {
                   />
                 </nav>
               </Req>
+
+              <Companion onOpenGrove={() => goToPage('grove')} onOpenRequest={(requestId) => { const request = requests.find((entry) => entry.id === requestId); if (request) openRequestDrawer(request) }} />
 
               {/* Always mounted: its code loads after first paint, and closing keeps the loaded detail for a reopen. */}
               <Suspense fallback={liveOpenRequest ? <RequestDetailLoading title={liveOpenRequest.title ?? liveOpenRequest.resolvesTo?.title ?? t('Untitled request')} onClose={closeRequestDrawer} /> : null}>
