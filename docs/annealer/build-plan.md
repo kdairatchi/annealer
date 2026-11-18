@@ -45,13 +45,14 @@ Checked against the source on 2026-11-18.
 | --- | --- |
 | 1. Grove and companion | Built, in pull request #1 |
 | 2. Climb into the tree | Started: a picked branch turns to face you and is kept in the URL |
+| Tune-up (self-improvement session) | Built, in pull request #1 |
 | 3. Context receipts | Not started |
 | 4. Sessions on the tree | Not started |
 | 5. Themes and customization | Not started (companion name and colours are done) |
 | 6. Quests | Not started |
 | 7. Take the wheel | Not started |
 | 8. Reviewer on security work | Not started; needs a finding first |
-| 9. Proof | Not started |
+| 9. Proof | Started: the benchmark table and daily growth snapshots are built |
 
 Step 1 has been run only on the sample fixtures in headless Chromium. Before anything else, run it against a real
 `~/.claude-mem` database, on a phone, and in Safari and Firefox.
@@ -72,6 +73,16 @@ and the bundle build pass. Steps 3, 4, 6 and 7 change the worker, so they also n
 - `Remember whether the Grove is drawn in 3D or flat`
 - `Draw the Grove in 3D: turn it, pick a branch, pick a twig`
 - `Keep the Grove's open branch in the URL`
+- `Measure each branch: benchmarks, and a snapshot of the tree each day`
+- `Add the tune-up: the steps that would grow the tree right now`
+- `Add the Tune-up and Benchmarks panels to the Grove`
+
+The tune-up is the self-improvement session. It lists what is recorded as waiting (a question to answer, a version
+to check, a request with no next step, rules and focus areas to decide, open work nobody reviewed) and walks through
+it one step at a time. A step leaves the list when the work changes, not when a button is pressed.
+
+Upstream's own self-improvement is separate and untouched: rules learned from how you work (My Rules), and memories
+that get stronger each time the work confirms them again (`src/services/reinforcement`).
 
 The 3D tree is drawn on a plain canvas with the projection in `growth/tree-3d.ts`. No 3D library was added: the tree
 is a few hundred line segments, and a library would have been most of the bundle.
@@ -161,7 +172,12 @@ setting is not known yet; it runs through the agent's command line.
 
 Backups and export already exist upstream, so this step only adds what is missing and links to the rest.
 
-- `Benchmark card: shipped per week and reviewed coverage, per branch`
+The benchmark table is built: per branch, the share shipped, reviewed and checked, average reviewed progress, and
+counts of requests with no next step or waiting on you. So is a snapshot of the tree for each day the Grove is
+opened, kept in the browser, because the worker keeps no history of it.
+
+- `Save the daily snapshot in the worker, so it does not depend on one browser`
+- `Shipped per week, per branch` (needs a recorded ship date on each request)
 - `Link Backups and Export from the Grove`
 - `Export one branch as a file: its requests, evidence and level`
 
