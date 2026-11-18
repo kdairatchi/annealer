@@ -8,6 +8,7 @@ import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { StateBadge } from '@/components/bits'
 import { Grove3D, type TreeLabel } from '@/components/grove-3d'
+import { ContextPanel } from '@/components/grove-context'
 import { Benchmarks, TuneUp } from '@/components/grove-panels'
 import { Trail } from '@/components/grove-trail'
 import { Button } from '@/components/ui/button'
@@ -356,7 +357,7 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
           <ul aria-label={t('Branches')} className={cn('flex gap-2 overflow-x-auto pb-1', grove.branches.length <= LABELS_SHOWN && 'xl:hidden')}>
             {grove.branches.map((branch, index) => <li key={branch.id} className="shrink-0"><BranchLabel branch={branch} index={index} selected={selected?.id === branch.id} onSelect={() => select(branch.id)} /></li>)}
           </ul>
-          <div role="group" aria-label={t('What to show under the tree')} className="flex w-fit rounded-[10px] border border-control-edge p-0.5">
+          <div role="group" aria-label={t('What to show under the tree')} className="flex w-fit max-w-full overflow-x-auto rounded-[10px] border border-control-edge p-0.5">
             {GROVE_PANELS.map((option) => (
               <Button key={option} size="sm" variant={panel === option ? 'default' : 'ghost'} aria-pressed={panel === option} onClick={() => setPanel(option)}>
                 {t(GROVE_PANEL_LABEL[option])}
@@ -366,6 +367,7 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
           </div>
           {panel === 'tune-up' && <TuneUp steps={steps} onGo={go} />}
           {panel === 'benchmarks' && <Benchmarks grove={grove} sample={sample} onOpenBranch={openBranch} onSpotlight={(branchId) => setSpotlight({ branchId, requestId: null })} />}
+          {panel === 'context' && <ContextPanel sample={sample} requests={requests} onOpenRequest={onOpenRequest} />}
           {panel === 'branch' && (selected
             ? <BranchSheet branch={selected} requests={requests} onOpenRequest={onOpenRequest} onOpenFocus={onOpenFocus} onSpotlight={(requestId) => setSpotlight({ branchId: null, requestId })}
                 climb={groveView === '3d' && selected.twigs.length > 0
