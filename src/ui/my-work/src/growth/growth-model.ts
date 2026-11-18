@@ -32,6 +32,8 @@ export interface GrowthTwig {
   percent: number | null
   leaves: number
   points: number
+  /** A person marked this version checked. */
+  checked: boolean
   /** The recorded next step is missing, so nobody knows what happens next. */
   missingNextStep: boolean
 }
@@ -92,7 +94,7 @@ function twigOf(request: Request, nextStepMissingText: string): { twig: GrowthTw
   const points = Object.values(sources).reduce((sum, value) => sum + value, 0)
   return {
     twig: {
-      requestId: request.id, title: request.title, state: request.state, percent, leaves, points,
+      requestId: request.id, title: request.title, state: request.state, percent, leaves, points, checked: Boolean(request.checkedAt),
       missingNextStep: !shipped && (!request.next.text.trim() || request.next.text === nextStepMissingText),
     },
     sources,
