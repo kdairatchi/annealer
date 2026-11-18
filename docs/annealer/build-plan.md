@@ -46,7 +46,7 @@ Checked against the source on 2026-11-18.
 | 1. Grove and companion | Built and merged (pull request #1) |
 | 2. Climb into the tree | Built: climb into a branch, rules as roots, unstarted asks as buds |
 | Tune-up (self-improvement session) | Built and merged |
-| 3. Context receipts | Not started. Changes the worker; needs a run on real data |
+| 3. Context receipts | Partly built: receipts are written, listed and shown. Pin, mute and "was it used" are open |
 | 4. Sessions on the tree | Not started. Changes the worker; needs a run on real data |
 | 5. Themes and customization | Built: accent colours, motion setting, three companion creatures unlocked by level |
 | 6. Quests | Partly built: the trail (notes, links, reminders) in the browser. Scheduled runs need the worker |
@@ -110,21 +110,40 @@ This is the context-engineering step. Upstream decides what each session is told
 no record of what a given session was actually given. So today you cannot look back at a session and see its
 context, compare two sessions, or tell which memories keep getting sent.
 
-A receipt is a small saved record written when context is built: which memories went in, how big each section was,
-the token count and the budget. It is a record of something that already happened. It triggers no model call and is
-never replayed (ground rule 5).
+Built:
 
-- `Save a receipt when a session's context is built`
-- `Show a request's context receipts in its drawer` (what the agent was told, by section, with sizes)
-- `Compare what two sessions were given`
-- `Show the memories sent most often, and the requests they went to`
-- `Pin or mute a memory for one focus area` (pinned is always offered there, muted never is)
-- `Show context weight on the Grove` (a branch's roots deepen with the saved context its sessions drew on)
-- `Flag context that is sent every session and never read back` (a memory the agent received but never searched,
-  cited or built on; a prompt to mute it)
+- `Add context receipts: a record of what a session was told`
+- `Have the SessionStart hook keep a receipt of the context it delivers`
+- `List context receipts from the worker`
+- `Read receipts on the page: totals, most sent, and comparing two sessions`
+- `Add the Context panel to the Grove`
 
-Open question before the first commit: whether a receipt belongs in the existing database or beside it. Read
-`ContextBuilder` and the migration rules first.
+How it works, and why it is built this way:
+
+- **The hook writes the receipt, not the worker.** The hook serves most sessions from the saved render on disk
+  without asking the worker, so only the hook knows what every session was told, and which session it was.
+- **It is built from the delivered text.** The memory ids and titles, section sizes and a hash are read out of the
+  exact text handed to the agent. The text itself is not kept.
+- **It lives beside the database**, in `<data dir>/annealer/context-receipts.jsonl`, not in a new table. This fork adds
+  no migration, so it can never collide with an upstream schema version. The file rolls over at 2 MB and one older
+  file is kept.
+- **It cannot cost anything.** A receipt records a delivery that already happened. It starts no inference, nothing
+  reads it to decide what to do, and nothing replays it. A failed write is swallowed, so a session never fails or
+  waits because of it.
+- `ANNEALER_CONTEXT_RECEIPTS=off` switches it off.
+
+Checked: unit tests against the real formatter's output, the hook's own test suite with a live and a cached render,
+the worker route, and one run of the built hook bundle against a seeded cache in a throwaway data folder, which
+delivered the context and wrote the expected receipt. Not checked: a real session in Claude Code or Codex.
+
+Left:
+
+- `Pin or mute a memory for one focus area` (pinned is always offered there, muted never is; changes what
+  `ContextBuilder` selects, so it needs its own careful step)
+- `Record whether a memory that was sent got used` (searched, fetched or cited later in the session), then
+  `Flag context that is sent every session and never used`
+- `Show a request's receipts in its drawer`, beyond the link from the receipt to its request
+- `Show context weight on the Grove`
 
 ### 4. Sessions on the tree
 
