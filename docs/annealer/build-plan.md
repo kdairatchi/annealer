@@ -41,12 +41,19 @@ and the bundle build pass.
 - `Add the Grove page and the companion to My Work`
 - `Rebuild the My Work bundle`
 - `Write down the Annealer build plan`
+- `Place the Grove's tree in space`
+- `Remember whether the Grove is drawn in 3D or flat`
+- `Draw the Grove in 3D: turn it, pick a branch, pick a twig`
+
+The 3D tree is drawn on a plain canvas with the projection in `growth/tree-3d.ts`. No 3D library was added: the tree
+is a few hundred line segments, and a library would have been most of the bundle.
 
 ### 2. Climb into the tree
 
-Click a branch and the tree redraws as that branch alone: requests as limbs, work product as leaves, rules that apply
-to it as roots, the asks nobody has started as buds. Click a twig to go one level deeper into its story and evidence.
-The current place is in the URL so Back works.
+Picking a branch already turns the tree to face it and moves the camera in. This step goes further: the tree
+redraws as that branch alone, with requests as limbs, work product as leaves, rules that apply to it as roots and the
+asks nobody has started as buds. Pick a twig to go one level deeper into its story and evidence. The current place
+is in the URL so Back works.
 
 - `Draw one branch as its own tree`
 - `Put the Grove's open branch in the URL`
