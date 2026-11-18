@@ -2,8 +2,9 @@
 
 Annealer is a fork of claude-mem. claude-mem already captures the work, sorts it into focus areas, learns rules and
 shows it all live in My Work. Annealer does not rebuild any of that. It adds the parts that make the work feel like
-something you grow: a tree you can climb into, a companion that reacts to what your agents are doing, things that run
-on a schedule so nothing is forgotten, and a look you can make your own.
+something you grow: a tree you can climb into, a companion that reacts to what your agents are doing, a record of
+what each session was actually told, things that run on a schedule so nothing is forgotten, and a look you can make
+your own.
 
 ## Ground rules
 
@@ -15,72 +16,130 @@ on a schedule so nothing is forgotten, and a look you can make your own.
 4. **Stay mergeable.** New code lives in its own folders (`src/ui/my-work/src/growth`, `companion`, …) and touches
    upstream files as little as possible, so pulling from claude-mem stays cheap.
 5. **Leave capture alone.** Nothing here changes hooks, queues, retries or the observer
-   (`docs/architecture/observer-lifecycle.md`).
+   (`docs/architecture/observer-lifecycle.md`). A step that writes a new record says so and adds no paid inference.
 
 ## What claude-mem already ships (do not rebuild)
+
+Checked against the source on 2026-11-18.
 
 | Already there | Where |
 | --- | --- |
 | Capture, memory, search | hooks, worker, SQLite, Chroma |
+| Context built for each session under a token budget | `src/services/context` (`ContextBuilder`, `ContextBudget`) |
+| A preview of the context a project would get, and its settings | classic viewer, Context settings (`/api/context/preview`) |
+| Per-folder `CLAUDE.md` context files | `docs/public/usage/folder-context.mdx` |
+| Session list and session detail | classic viewer at `/viewer` |
 | Live requests, progress, hand-offs, deliverables | My Work |
 | Focus areas with keep / rename / merge / dismiss | My Focus, Suggested |
 | Learned rules with approve / edit / reject | My Rules |
 | Build story, team board, shared focus pages | My Work, TeamBrain |
 | Continue a conversation from the page | request drawer |
+| Telegram alerts and session wrap-ups | modes |
+| Local and third-party models for observation extraction (Ollama, LM Studio, …) | OpenAI-compatible provider |
+| Automatic database snapshots and restore | Backups |
+| Memory and work-state export / import | Export/Import |
+
+## Where things stand
+
+| Step | Status |
+| --- | --- |
+| 1. Grove and companion | Built, in pull request #1 |
+| 2. Climb into the tree | Started: a picked branch turns to face you and is kept in the URL |
+| 3. Context receipts | Not started |
+| 4. Sessions on the tree | Not started |
+| 5. Themes and customization | Not started (companion name and colours are done) |
+| 6. Quests | Not started |
+| 7. Take the wheel | Not started |
+| 8. Reviewer on security work | Not started; needs a finding first |
+| 9. Proof | Not started |
+
+Step 1 has been run only on the sample fixtures in headless Chromium. Before anything else, run it against a real
+`~/.claude-mem` database, on a phone, and in Safari and Firefox.
 
 ## Build order
 
 Each step is one pull request. The commits listed are the plan; a step is done when its tests, the root typecheck
-and the bundle build pass.
+and the bundle build pass. Steps 3, 4, 6 and 7 change the worker, so they also need a run against real data.
 
-### 1. Grove and companion (this pull request)
+### 1. Grove and companion (pull request #1)
 
 - `Add the growth model: focus areas level up from recorded work`
 - `Add the companion's moods and pixel sprites`
 - `Make room in the store for the Grove page and companion settings`
 - `Add the Grove page and the companion to My Work`
-- `Rebuild the My Work bundle`
 - `Write down the Annealer build plan`
 - `Place the Grove's tree in space`
 - `Remember whether the Grove is drawn in 3D or flat`
 - `Draw the Grove in 3D: turn it, pick a branch, pick a twig`
+- `Keep the Grove's open branch in the URL`
 
 The 3D tree is drawn on a plain canvas with the projection in `growth/tree-3d.ts`. No 3D library was added: the tree
 is a few hundred line segments, and a library would have been most of the bundle.
 
 ### 2. Climb into the tree
 
-Picking a branch already turns the tree to face it and moves the camera in. This step goes further: the tree
-redraws as that branch alone, with requests as limbs, work product as leaves, rules that apply to it as roots and the
-asks nobody has started as buds. Pick a twig to go one level deeper into its story and evidence. The current place
-is in the URL so Back works.
+Picking a branch already turns the tree to face it, moves the camera in, and puts the branch in the URL. This step
+goes further: the tree redraws as that branch alone.
 
-- `Draw one branch as its own tree`
-- `Put the Grove's open branch in the URL`
-- `Show the rules that apply to a branch as its roots`
+- `Draw one branch as its own tree` (requests as limbs, work product as leaves)
+- `Show the rules that apply to a branch as its roots` (approved rules only; waiting ones as pale roots)
 - `Show asks nobody started as buds`
+- `Pick a leaf to open that file, commit or pull request`
+- `Let the companion walk the ground under the tree`
 
-### 3. Themes and customization
+### 3. Context receipts
+
+This is the context-engineering step. Upstream decides what each session is told and can preview it, but it keeps
+no record of what a given session was actually given. So today you cannot look back at a session and see its
+context, compare two sessions, or tell which memories keep getting sent.
+
+A receipt is a small saved record written when context is built: which memories went in, how big each section was,
+the token count and the budget. It is a record of something that already happened. It triggers no model call and is
+never replayed (ground rule 5).
+
+- `Save a receipt when a session's context is built`
+- `Show a request's context receipts in its drawer` (what the agent was told, by section, with sizes)
+- `Compare what two sessions were given`
+- `Show the memories sent most often, and the requests they went to`
+- `Pin or mute a memory for one focus area` (pinned is always offered there, muted never is)
+- `Show context weight on the Grove` (a branch's roots deepen with the saved context its sessions drew on)
+- `Flag context that is sent every session and never read back` (a memory the agent received but never searched,
+  cited or built on; a prompt to mute it)
+
+Open question before the first commit: whether a receipt belongs in the existing database or beside it. Read
+`ContextBuilder` and the migration rules first.
+
+### 4. Sessions on the tree
+
+Sessions exist in the classic viewer. My Work is organised by request, and nothing connects the two on screen.
+
+- `List the sessions behind a request in its drawer` (agent, device, start, length, link to the session page)
+- `Show a branch's sessions as growth rings` (one ring per week that had sessions; pick a ring to list them)
+- `Mark where a session picked up from an earlier one`
+
+### 5. Themes and customization
 
 A theme is a named set of the existing colour tokens, so every current page follows it for free.
 
-- `Let a theme be picked and remembered` (Paper, Dusk, plus Ember: near-black with a red-orange glow)
+- `Let a theme be picked and remembered` (Paper and Dusk as today, plus Ember: near-black with a red-orange glow)
 - `Add a density and motion setting`
 - `Let the companion's sprite be swapped` (more creatures, each a frame table like the first)
 - `Unlock companion looks at Grove levels` (earned by level, never bought)
+- `Let a branch be given its own colour`
 
-### 4. Quests: nothing gets forgotten
+### 6. Quests: nothing gets forgotten
 
-The first backend step. A quest is a saved instruction the worker runs on a schedule and reports on in My Work.
-It reads saved records; it must not create paid inference on its own (ground rule 5).
+A quest is a saved instruction the worker runs on a schedule and reports on in My Work. It reads saved records.
+It must not start paid inference by itself: a quest that needs an agent turn waits for you to press the button.
 
 - `Add a quest record and its states`
 - `Nudge: list open requests with no recorded next step every morning`
 - `Loop: re-check a request until its next step is recorded`
 - `Show quests on the companion and in the Grove`
-- `Research trail: keep one-liners and links a quest found, under its branch`
+- `Research trail: keep the one-liners and links you save, under their branch`
+- `Send a quest's report through the existing Telegram alerts`
 
-### 5. Take the wheel
+### 7. Take the wheel
 
 Upstream can already continue a conversation from the page. This step adds the rest of steering.
 
@@ -88,27 +147,31 @@ Upstream can already continue a conversation from the page. This step adds the r
 - `Add a note to a running request from the page`
 - `Pause a request from the page` (only where the platform's hooks allow it; say so plainly where they do not)
 
-### 6. Local models for the reviewer
+### 8. Reviewer on security work
 
-Security work trips the hosted reviewer's safeguards and the refresh fails. Let the review and title steps run on a
-local model (Ollama or LM Studio) when one is set.
+On security work the learning run can fail with the agent's own safeguards, and the refresh stops. Upstream already
+lets observation extraction run on a local or third-party model. Whether the My Work learning run can use that
+setting is not known yet; it runs through the agent's command line.
 
-- `Let the progress reviewer use a local OpenAI-compatible endpoint`
+- `Find out which model path the learning run uses, and write it down here`
+- then one of: `Let the learning run use the configured provider`, or `Say plainly when a review was refused and why`
 - `Say which model wrote a review`
 
-### 7. Proof and backup
+### 9. Proof
 
-- `Export a branch as one file: its requests, evidence and level`
-- `Keep a dated backup of the Grove's history`
+Backups and export already exist upstream, so this step only adds what is missing and links to the rest.
+
 - `Benchmark card: shipped per week and reviewed coverage, per branch`
+- `Link Backups and Export from the Grove`
+- `Export one branch as a file: its requests, evidence and level`
 
-## How to run this step
+## How to run it
 
 ```bash
 cd src/ui/my-work
 npm install
 npm run dev            # http://localhost:5173/?source=sample&view=grove for the fixtures
-npm test               # growth and companion tests run with the rest
+npm test               # growth, 3D and companion tests run with the rest
 npm run build          # writes the bundle the installed plugin serves
 ```
 
