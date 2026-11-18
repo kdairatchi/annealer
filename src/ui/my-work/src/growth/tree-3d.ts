@@ -2,14 +2,14 @@
 // Branches leave the trunk a golden angle apart, the way real shoots do, so no two ever line up and a new branch never
 // moves the others. Nothing is random: the same model always grows the same tree. Pure, so `node --test` can load it.
 import type { LiveState } from '../data.ts'
-import type { Grove } from './growth-model.ts'
+import type { Grove, GrowthBranch } from './growth-model.ts'
 import { TWIGS_SHOWN } from './tree-layout.ts'
 
 export interface Vec3 { x: number; y: number; z: number }
 
 /** A piece of wood: a line through space that tapers from `width[0]` to `width[1]`, in world units. */
 export interface Limb3 {
-  kind: 'trunk' | 'branch' | 'twig'
+  kind: 'trunk' | 'branch' | 'twig' | 'root'
   points: Vec3[]
   width: readonly [number, number]
   /** Null on the trunk. */
@@ -28,12 +28,20 @@ export interface Leaf3 { at: Vec3; branchId: string; requestId: string }
 /** Where a branch's label is pinned, and the direction it leaves the trunk (radians around the trunk). */
 export interface BranchPin3 { branchId: string; at: Vec3; middle: Vec3; azimuth: number }
 
-export interface Tree3 { limbs: Limb3[]; leaves: Leaf3[]; pins: BranchPin3[]; height: number; reach: number }
+/** An ask nobody has started: a bud on its branch. */
+export interface Bud3 { at: Vec3; branchId: string; title: string; timesAsked: number }
+
+export interface Tree3 { limbs: Limb3[]; leaves: Leaf3[]; buds: Bud3[]; pins: BranchPin3[]; height: number; reach: number }
 
 /** World height of the trunk. */
 export const TREE_HEIGHT = 8.6
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const LEAVES_SHOWN = 5
+/** Buds drawn per branch, roots drawn under the tree, and requests drawn when one branch is its own tree. */
+export const BUDS_SHOWN = 4
+export const ROOTS_SHOWN = 12
+export const BRANCH_LIMBS_SHOWN = 14
+const BRANCH_LEAVES_SHOWN = 12
 const CURVE_STEPS = 10
 
 const add = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z })
@@ -53,9 +61,28 @@ function curve(start: Vec3, bend: Vec3, end: Vec3): Vec3[] {
   })
 }
 
-export function buildTree3(grove: Grove): Tree3 {
-  const limbs: Limb3[] = []
+/**
+ * Rules are the tree's roots: one for each rule that is on, then a dashed one for each rule still waiting on a
+ * decision. Rules are scoped to everywhere or to a repo, not to a focus area, so they belong to the whole tree.
+ */
+function roots(on: number, waiting: number): Limb3[] {
+  const total = Math.min(ROOTS_SHOWN, on + waiting)
+  const solid = Math.min(on, total)
+  return Array.from({ length: total }, (_, index) => {
+    const turn = 0.9 + index * GOLDEN_ANGLE
+    const length = 1.5 + (index % 3) * 0.55
+    const out: Vec3 = { x: Math.cos(turn), y: 0, z: Math.sin(turn) }
+    return {
+      kind: 'root' as const, points: [{ x: 0, y: 0.25, z: 0 }, add(scale(out, length * 0.5), { x: 0, y: 0.02, z: 0 }), add(scale(out, length), { x: 0, y: -0.12, z: 0 })],
+      width: [0.16, 0.04] as const, branchId: null, requestId: null, state: null, dashed: index >= solid, grows: [0, 0.3] as const,
+    }
+  })
+}
+
+export function buildTree3(grove: Grove, rules: { on: number; waiting: number } = { on: 0, waiting: 0 }): Tree3 {
+  const limbs: Limb3[] = [...roots(rules.on, rules.waiting)]
   const leaves: Leaf3[] = []
+  const buds: Bud3[] = []
   const pins: BranchPin3[] = []
   const count = grove.branches.length
   const girth = Math.min(0.75, 0.42 + grove.level * 0.05)
@@ -81,6 +108,11 @@ export function buildTree3(grove: Grove): Tree3 {
     pins.push({ branchId: branch.id, at: add(end, { x: 0, y: 0.35, z: 0 }), middle: points[Math.round(CURVE_STEPS * 0.6)], azimuth })
     reach = Math.max(reach, Math.hypot(end.x, end.z))
 
+    branch.asks.slice(0, BUDS_SHOWN).forEach((ask, askIndex) => {
+      // Buds sit near the trunk end of the branch, before the first twig.
+      const base = points[1 + askIndex]
+      buds.push({ branchId: branch.id, title: ask.title, timesAsked: ask.timesAsked, at: add(base, { x: 0, y: 0.28, z: 0 }) })
+    })
     const shown = branch.twigs.slice(0, TWIGS_SHOWN)
     shown.forEach((twig, twigIndex) => {
       const along = 0.34 + (0.62 * (twigIndex + 1)) / (shown.length + 1)
@@ -103,7 +135,51 @@ export function buildTree3(grove: Grove): Tree3 {
       }
     })
   })
-  return { limbs, leaves, pins, height: TREE_HEIGHT, reach }
+  return { limbs, leaves, buds, pins, height: TREE_HEIGHT, reach }
+}
+
+/**
+ * One branch drawn as its own tree, for climbing into it: the trunk is the focus area, each limb is a request
+ * (coloured by its state, longer the more it has earned), leaves are its work product, and the area's unstarted asks
+ * are buds up the trunk. Limbs and pins carry the request id in `branchId`, so picking one picks that request.
+ */
+export function buildBranchTree3(branch: GrowthBranch): Tree3 {
+  const limbs: Limb3[] = []
+  const leaves: Leaf3[] = []
+  const pins: BranchPin3[] = []
+  const girth = Math.min(0.7, 0.34 + branch.level * 0.06)
+  limbs.push({
+    kind: 'trunk', points: Array.from({ length: 13 }, (_, step) => trunkAt((TREE_HEIGHT * step) / 12)), width: [girth, girth * 0.3],
+    branchId: null, requestId: null, state: null, dashed: branch.suggested, grows: [0, 0.45],
+  })
+  const shown = branch.twigs.slice(0, BRANCH_LIMBS_SHOWN)
+  let reach = 2
+  shown.forEach((twig, index) => {
+    const rank = shown.length <= 1 ? 0 : index / (shown.length - 1)
+    const azimuth = 0.5 + index * GOLDEN_ANGLE
+    const out: Vec3 = { x: Math.cos(azimuth), y: 0, z: Math.sin(azimuth) }
+    const length = Math.min(4.4, 2.3 + twig.points * 0.035) * (1 - rank * 0.25)
+    const start = trunkAt(1.9 + rank * (TREE_HEIGHT - 3.2))
+    const end = add(start, add(scale(out, length), { x: 0, y: length * 0.4, z: 0 }))
+    const bend = add(start, add(scale(out, length * 0.55), { x: 0, y: -length * 0.03, z: 0 }))
+    const points = curve(start, bend, end)
+    const born = 0.2 + rank * 0.3
+    limbs.push({ kind: 'twig', points, width: [0.13, 0.04], branchId: twig.requestId, requestId: twig.requestId, state: twig.state, dashed: twig.missingNextStep, grows: [born, 0.4] })
+    pins.push({ branchId: twig.requestId, at: add(end, { x: 0, y: 0.35, z: 0 }), middle: points[Math.round(CURVE_STEPS * 0.6)], azimuth })
+    reach = Math.max(reach, Math.hypot(end.x, end.z))
+    const across: Vec3 = { x: -Math.sin(azimuth), y: 0, z: Math.cos(azimuth) }
+    for (let leaf = 0; leaf < Math.min(twig.leaves, BRANCH_LEAVES_SHOWN); leaf += 1) {
+      // Leaves alternate either side of the outer half of the limb.
+      const base = points[Math.min(CURVE_STEPS, 4 + (leaf % 7))]
+      const side = leaf % 2 === 0 ? 1 : -1
+      leaves.push({ branchId: twig.requestId, requestId: twig.requestId, at: add(base, add(scale(across, side * (0.22 + (leaf > 6 ? 0.2 : 0))), { x: 0, y: 0.2, z: 0 })) })
+    }
+  })
+  const buds = branch.asks.slice(0, BUDS_SHOWN * 2).map((ask, index) => {
+    const turn = 2.2 + index * GOLDEN_ANGLE
+    return { branchId: branch.id, title: ask.title, timesAsked: ask.timesAsked, at: add(trunkAt(1 + index * 0.55), { x: Math.cos(turn) * 0.5, y: 0, z: Math.sin(turn) * 0.5 }) }
+  })
+  return { limbs, leaves, buds, pins, height: TREE_HEIGHT, reach }
 }
 
 // ── Camera ───────────────────────────────────────────────────────────────────────────────────────────────────────────
