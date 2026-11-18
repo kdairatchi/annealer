@@ -16,6 +16,7 @@ import { Notch } from '@/components/aceternity/notch'
 import { StickyBanner } from '@/components/aceternity/sticky-banner'
 import { CmemMark } from '@/components/brand'
 import { Companion } from '@/companion/companion'
+import { ACCENT_TONES } from '@/growth/grove-view'
 import { FocusChipRow, FocusRail, PastFocusLink, SIDE_NAV_PILL } from '@/components/focus-nav'
 import { cn } from '@/lib/utils'
 import { MyWork } from '@/pages/my-work'
@@ -45,6 +46,15 @@ const ACCOUNT_AND_BILLING_URL = 'https://cmem.ai/account'
 function useDarkMode() {
   const dark = useStore((state) => state.view.dark)
   useEffect(() => { document.documentElement.classList.toggle('dark', dark) }, [dark])
+  // The accent is written over the theme's three primary tokens; Ember removes the override and the stylesheet's own orange shows.
+  const accent = useStore(state => state.view.accent)
+  useEffect(() => {
+    const tones = ACCENT_TONES[accent]
+    const style = document.documentElement.style
+    for (const [token, value] of [['--primary', tones?.primary], ['--primary-bright', tones?.bright], ['--primary-deep', tones?.deep]] as const) {
+      if (value) style.setProperty(token, value); else style.removeProperty(token)
+    }
+  }, [accent])
   return dark
 }
 

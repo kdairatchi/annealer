@@ -360,7 +360,7 @@ describe('display preferences', () => {
     first.getState().setFocusArtwork('compact')
     first.getState().goToPage('rules')
     const saved = JSON.parse(storage.items.get('claude-mem:my-work:preferences')!)
-    assert.deepEqual(saved.state, { listView: 'list', filter: 'closed', sort: 'attention', focusArtwork: 'compact', companion: { shown: true, name: 'Cinder', palette: 'ember' }, groveView: '3d' })
+    assert.deepEqual(saved.state, { listView: 'list', filter: 'closed', sort: 'attention', focusArtwork: 'compact', companion: { shown: true, name: 'Cinder', palette: 'ember', species: 'cinder' }, groveView: '3d', groveMotion: 'full', accent: 'ember' })
     const next = testStore({ storage }).store.getState().view
     assert.deepEqual([next.listView, next.filter, next.focusArtwork, next.section], ['list', 'closed', 'compact', 'work'])
   })
@@ -428,9 +428,16 @@ describe('the Grove and the companion', () => {
     const first = testStore({ storage }).store
     first.getState().setCompanion({ name: '   Forge    Goblin of the North  ', palette: 'tide' })
     first.getState().setCompanion({ shown: false })
-    assert.deepEqual(testStore({ storage }).store.getState().view.companion, { shown: false, name: 'Forge Goblin of', palette: 'tide' })
-    const odd = memoryStorage({ 'claude-mem:my-work:preferences': JSON.stringify({ version: 1, state: { companion: { shown: 'yes', name: '', palette: 'neon' } } }) })
-    assert.deepEqual(testStore({ storage: odd }).store.getState().view.companion, { shown: true, name: 'Cinder', palette: 'ember' })
+    assert.deepEqual(testStore({ storage }).store.getState().view.companion, { shown: false, name: 'Forge Goblin of', palette: 'tide', species: 'cinder' })
+    const odd = memoryStorage({ 'claude-mem:my-work:preferences': JSON.stringify({ version: 1, state: { companion: { shown: 'yes', name: '', palette: 'neon', species: 'dragon' }, accent: 'chrome', groveMotion: 'wild' } }) })
+    const view = testStore({ storage: odd }).store.getState().view
+    assert.deepEqual(view.companion, { shown: true, name: 'Cinder', palette: 'ember', species: 'cinder' })
+    assert.deepEqual([view.accent, view.groveMotion], ['ember', 'full'])
+    const picked = memoryStorage()
+    const store = testStore({ storage: picked }).store
+    store.getState().setAccent('violet'); store.getState().setGroveMotion('calm'); store.getState().setCompanion({ species: 'bolt' })
+    const again = testStore({ storage: picked }).store.getState().view
+    assert.deepEqual([again.accent, again.groveMotion, again.companion.species], ['violet', 'calm', 'bolt'])
   })
 })
 

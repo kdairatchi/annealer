@@ -3,8 +3,8 @@
 import type { FocusChange, Request } from '../data.ts'
 import type { OwnerRule, RuleChange } from '../data-rules.ts'
 import type { ConnectionStatus } from '../live/connection-status.ts'
-import type { CompanionPalette } from '../companion/companion-sprites.ts'
-import type { GroveView } from '../growth/grove-view.ts'
+import type { CompanionPalette, CompanionSpecies } from '../companion/companion-sprites.ts'
+import type { Accent, GroveMotion, GroveView } from '../growth/grove-view.ts'
 import type { ReviewResult } from '../live/review-response.ts'
 import type { RuleDecision, SavedRuleDecision } from '../live/rule-actions.ts'
 import type { RequestChange } from '../live/update-queue.ts'
@@ -73,7 +73,7 @@ export type WorkFilter = 'all' | 'needs-you' | 'working' | 'shipped' | 'closed'
 export type WorkSort = 'attention' | 'started' | 'progress'
 export type FocusArtwork = 'full' | 'compact' | 'off'
 /** The pixel companion: whether it is on screen, what it is called and which colours it wears. */
-export interface CompanionPreferences { shown: boolean; name: string; palette: CompanionPalette }
+export interface CompanionPreferences { shown: boolean; name: string; palette: CompanionPalette; species: CompanionSpecies }
 export interface Workspace { mode: 'home' | 'web'; team: boolean; connected: boolean }
 export type FocusSelection = { kind: 'area'; focusAreaId: string } | { kind: 'suggested' } | { kind: 'past-focus' } | null
 
@@ -103,6 +103,10 @@ export interface ViewState {
   companion: CompanionPreferences
   /** How the Grove is drawn. */
   groveView: GroveView
+  /** How much the Grove moves on its own. */
+  groveMotion: GroveMotion
+  /** The accent colour, applied to every page. */
+  accent: Accent
 }
 
 export interface ViewSlice {
@@ -128,6 +132,8 @@ export interface ViewSlice {
   setFocusArtwork: (focusArtwork: FocusArtwork) => void
   setCompanion: (change: Partial<CompanionPreferences>) => void
   setGroveView: (groveView: GroveView) => void
+  setGroveMotion: (groveMotion: GroveMotion) => void
+  setAccent: (accent: Accent) => void
   /** Opens a branch of the Grove, or the whole tree with null, and records it in the URL so Back returns. */
   openGroveBranch: (branchId: string | null) => void
 }
