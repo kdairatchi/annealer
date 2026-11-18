@@ -5,6 +5,7 @@ import { create, type StateCreator } from 'zustand'
 import { createJSONStorage, devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { COMPANION_PALETTES, companionName, type CompanionPalette } from '../companion/companion-sprites.ts'
+import { isGroveView } from '../growth/grove-view.ts'
 import { createFocusSlice } from './slices/focus-slice.ts'
 import { createRulesSlice } from './slices/rules-slice.ts'
 import { createViewSlice } from './slices/view-slice.ts'
@@ -22,7 +23,7 @@ export type SliceCreator<Slice> = StateCreator<BoundStore, Mutators, [], Slice>
 /** Bump when a persisted field changes meaning; older saved preferences are then dropped. */
 const PREFERENCES_VERSION = 1
 // The theme is not saved: it follows the system preference (or `?theme=`), as it always has.
-type Preferences = Pick<ViewState, 'listView' | 'filter' | 'sort' | 'focusArtwork' | 'companion'>
+type Preferences = Pick<ViewState, 'listView' | 'filter' | 'sort' | 'focusArtwork' | 'companion' | 'groveView'>
 
 const LIST_VIEWS: readonly ViewState['listView'][] = ['cards', 'list', 'agents', 'team']
 const FILTERS: readonly ViewState['filter'][] = ['all', 'needs-you', 'working', 'shipped', 'closed']
@@ -37,6 +38,7 @@ function validPreferences(saved: unknown): Partial<Preferences> {
   if (FILTERS.includes(value.filter as ViewState['filter'])) preferences.filter = value.filter as ViewState['filter']
   if (SORTS.includes(value.sort as ViewState['sort'])) preferences.sort = value.sort as ViewState['sort']
   if (FOCUS_ARTWORK.includes(value.focusArtwork as ViewState['focusArtwork'])) preferences.focusArtwork = value.focusArtwork as ViewState['focusArtwork']
+  if (isGroveView(value.groveView)) preferences.groveView = value.groveView
   // The companion is read back field by field too, so one unusable value does not reset the other two.
   const companion = (value.companion ?? null) as Record<string, unknown> | null
   if (companion && typeof companion === 'object') {
@@ -67,7 +69,7 @@ export function createBoundStore(environment: StoreEnvironment) {
         version: PREFERENCES_VERSION,
         ...(environment.storage ? { storage: createJSONStorage(() => environment.storage!) } : {}),
         // Only how the person likes to see My Work is saved. Server records stay in memory.
-        partialize: ({ view: { listView, filter, sort, focusArtwork, companion } }): Preferences => ({ listView, filter, sort, focusArtwork, companion }),
+        partialize: ({ view: { listView, filter, sort, focusArtwork, companion, groveView } }): Preferences => ({ listView, filter, sort, focusArtwork, companion, groveView }),
         merge: (saved, current) => {
           const view = { ...current.view, ...validPreferences(saved) }
           // The team view needs the team switch, which is not saved.

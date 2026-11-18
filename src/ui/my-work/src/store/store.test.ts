@@ -360,7 +360,7 @@ describe('display preferences', () => {
     first.getState().setFocusArtwork('compact')
     first.getState().goToPage('rules')
     const saved = JSON.parse(storage.items.get('claude-mem:my-work:preferences')!)
-    assert.deepEqual(saved.state, { listView: 'list', filter: 'closed', sort: 'attention', focusArtwork: 'compact', companion: { shown: true, name: 'Cinder', palette: 'ember' } })
+    assert.deepEqual(saved.state, { listView: 'list', filter: 'closed', sort: 'attention', focusArtwork: 'compact', companion: { shown: true, name: 'Cinder', palette: 'ember' }, groveView: '3d' })
     const next = testStore({ storage }).store.getState().view
     assert.deepEqual([next.listView, next.filter, next.focusArtwork, next.section], ['list', 'closed', 'compact', 'work'])
   })
@@ -396,6 +396,14 @@ describe('the Grove and the companion', () => {
     store.getState().goToPage('work')
     store.getState().goToPage('rules')
     assert.deepEqual(usage, [{ event: 'switched', view: 'rules', previousView: 'work' }])
+  })
+
+  it('remembers how the Grove is drawn and ignores a value it does not know', () => {
+    const storage = memoryStorage()
+    testStore({ storage }).store.getState().setGroveView('flat')
+    assert.equal(testStore({ storage }).store.getState().view.groveView, 'flat')
+    const odd = memoryStorage({ 'claude-mem:my-work:preferences': JSON.stringify({ version: 1, state: { groveView: 'hologram' } }) })
+    assert.equal(testStore({ storage: odd }).store.getState().view.groveView, '3d')
   })
 
   it('remembers the companion, cleans its name, and falls back field by field', () => {

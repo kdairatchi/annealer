@@ -4,6 +4,7 @@ import type { FocusChange, Request } from '../data.ts'
 import type { OwnerRule, RuleChange } from '../data-rules.ts'
 import type { ConnectionStatus } from '../live/connection-status.ts'
 import type { CompanionPalette } from '../companion/companion-sprites.ts'
+import type { GroveView } from '../growth/grove-view.ts'
 import type { ReviewResult } from '../live/review-response.ts'
 import type { RuleDecision, SavedRuleDecision } from '../live/rule-actions.ts'
 import type { RequestChange } from '../live/update-queue.ts'
@@ -98,6 +99,8 @@ export interface ViewState {
   /** Display density only; changing it never requests image generation. */
   focusArtwork: FocusArtwork
   companion: CompanionPreferences
+  /** How the Grove is drawn. */
+  groveView: GroveView
 }
 
 export interface ViewSlice {
@@ -122,6 +125,7 @@ export interface ViewSlice {
   setSort: (sort: WorkSort) => void
   setFocusArtwork: (focusArtwork: FocusArtwork) => void
   setCompanion: (change: Partial<CompanionPreferences>) => void
+  setGroveView: (groveView: GroveView) => void
 }
 
 // ---------- Rules: the receipts and Undo for My Rules saves ----------
