@@ -8,6 +8,7 @@ import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { StateBadge } from '@/components/bits'
 import { Grove3D, type TreeLabel } from '@/components/grove-3d'
+import { ContextPanel } from '@/components/grove-context'
 import { Benchmarks, TuneUp } from '@/components/grove-panels'
 import { Trail } from '@/components/grove-trail'
 import { Button } from '@/components/ui/button'
@@ -211,6 +212,8 @@ function Tree({ grove, selectedId, onSelect }: { grove: GroveModel; selectedId: 
 }
 
 const TRAIL_KEY = 'annealer:grove:trail'
+/** An id for a new note. `crypto.randomUUID` only exists on https and localhost, and the worker can be opened by LAN address. */
+const newNoteId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 const today = () => new Date().toLocaleDateString('en-CA')
 
 /** Colour, motion and how the tree is drawn, in one place. Every choice is saved in this browser. */
@@ -261,6 +264,7 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
   const groveView = useStore((state) => state.view.groveView)
   const calm = useStore((state) => state.view.groveMotion) === 'calm'
   const selectedId = useStore((state) => state.view.groveBranch)
+  const sourceKind = useStore((state) => state.work.sourceKind)
   const { setCompanion, openGroveBranch: setSelectedId } = useStore.getState()
   const sample = new URLSearchParams(window.location.search).get('source') === 'sample'
   const grove = useMemo(() => toGrove(focusAreas, requests, otherAsks, NEXT_STEP_NOT_RECORDED, t('Other')), [focusAreas, requests, otherAsks, t])
@@ -356,7 +360,7 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
           <ul aria-label={t('Branches')} className={cn('flex gap-2 overflow-x-auto pb-1', grove.branches.length <= LABELS_SHOWN && 'xl:hidden')}>
             {grove.branches.map((branch, index) => <li key={branch.id} className="shrink-0"><BranchLabel branch={branch} index={index} selected={selected?.id === branch.id} onSelect={() => select(branch.id)} /></li>)}
           </ul>
-          <div role="group" aria-label={t('What to show under the tree')} className="flex w-fit rounded-[10px] border border-control-edge p-0.5">
+          <div role="group" aria-label={t('What to show under the tree')} className="flex w-fit max-w-full overflow-x-auto rounded-[10px] border border-control-edge p-0.5">
             {GROVE_PANELS.map((option) => (
               <Button key={option} size="sm" variant={panel === option ? 'default' : 'ghost'} aria-pressed={panel === option} onClick={() => setPanel(option)}>
                 {t(GROVE_PANEL_LABEL[option])}
@@ -366,13 +370,14 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
           </div>
           {panel === 'tune-up' && <TuneUp steps={steps} onGo={go} />}
           {panel === 'benchmarks' && <Benchmarks grove={grove} sample={sample} onOpenBranch={openBranch} onSpotlight={(branchId) => setSpotlight({ branchId, requestId: null })} />}
+          {panel === 'context' && <ContextPanel source={sample ? 'sample' : sourceKind === 'cloud' ? 'cloud' : 'local'} requests={requests} onOpenRequest={onOpenRequest} />}
           {panel === 'branch' && (selected
             ? <BranchSheet branch={selected} requests={requests} onOpenRequest={onOpenRequest} onOpenFocus={onOpenFocus} onSpotlight={(requestId) => setSpotlight({ branchId: null, requestId })}
                 climb={groveView === '3d' && selected.twigs.length > 0
                   ? <Button size="sm" onClick={() => setClimbedId(climbed ? null : selected.id)}><TreesIcon />{t(climbed ? 'Back to the whole tree' : 'Climb into this branch')}</Button>
                   : null}
                 trail={<Trail branchId={selected.id} notes={trail} today={day}
-                  onAdd={(note) => saveTrail(addNote(trail, { ...note, id: crypto.randomUUID(), createdAt: new Date().toISOString() }))}
+                  onAdd={(note) => saveTrail(addNote(trail, { ...note, id: newNoteId(), createdAt: new Date().toISOString() }))}
                   onToggle={(id) => saveTrail(toggleNote(trail, id))} onRemove={(id) => saveTrail(removeNote(trail, id))} />} />
             : <p className="rounded-xl border border-dashed bg-card/40 px-4 py-3 text-sm text-muted-foreground">{t('Pick a branch on the tree to open it.')}</p>)}
         </>

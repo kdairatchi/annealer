@@ -211,6 +211,7 @@ import { SearchRoutes } from './worker/http/routes/SearchRoutes.js';
 import { SettingsRoutes } from './worker/http/routes/SettingsRoutes.js';
 import { LogsRoutes } from './worker/http/routes/LogsRoutes.js';
 import { MemoryRoutes } from './worker/http/routes/MemoryRoutes.js';
+import { AnnealerRoutes } from './worker/http/routes/AnnealerRoutes.js';
 import { MemoryFileWatcher } from './memory/file-watcher.js';
 import { parseMemoryWatchRoots } from './memory/config.js';
 import { saveMemory } from './memory/save-memory.js';
@@ -960,6 +961,8 @@ export class WorkerService implements WorkerRef {
     this.server.registerRoutes(new SettingsRoutes(this.settingsManager));
     this.server.registerRoutes(new LogsRoutes());
     this.server.registerRoutes(new MemoryRoutes(this.dbManager, 'claude-mem'));
+    // Annealer: read-only access to the context receipts the SessionStart hook writes.
+    this.server.registerRoutes(new AnnealerRoutes());
     this.server.registerRoutes(new MemoryIngestRoutes(this.dbManager));
     this.server.registerRoutes(new DedupRoutes(this.dbManager));
     this.server.registerRoutes(new ServerV1Routes({

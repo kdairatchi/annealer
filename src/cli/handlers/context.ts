@@ -38,6 +38,8 @@ import { resolveRuntimeContext, type ServerRuntimeContext } from '../../services
 import type { ContextInput } from '../../services/context/types.js';
 import { serverSessionStartBudgetMs } from '../../shared/host-hook-limits.js';
 import { contextCacheKeys, fillContextPlaceholders, readContextCache } from '../../shared/context-cache.js';
+import { appendReceipt, receiptOf, receiptsEnabled, type ContextReceiptSource } from '../../shared/annealer/context-receipts.js';
+import { resolveDataDir } from '../../shared/data-dir.js';
 import { clearTimelinePending } from '../../shared/codex-compaction-gate.js';
 import { readSetupState, type SetupStateFile } from '../../shared/setup-state.js';
 import { hasPendingInstallSetup } from '../../shared/setup-install.js';
@@ -494,6 +496,8 @@ export const contextHandler: EventHandler = {
     // A cached block never carries the prior reply, so with "Include last
     // message" on it is read only when the worker cannot answer.
     const cacheNowEpochMs = Date.now();
+    // Annealer context receipt: how old the cached model context was, when that is what the session gets.
+    let modelCacheAgeMs: number | null = null;
     const readCachedRender = (colors: boolean): string | null => {
       if (serverRuntime) return null;
       const keys = contextCacheKeys(scopeProjects, platformSourceParam ? normalizedPlatformSource : undefined, colors, cwd);
@@ -511,9 +515,11 @@ export const contextHandler: EventHandler = {
       // re-renders it with the current reserve. Never cut a rendered entry
       // to fit.
       if (!colors && filled.length > sessionStartBodyRoom(noticeText)) return null;
+      if (!colors) modelCacheAgeMs = cacheNowEpochMs - cached.renderedAtEpochMs;
       return filled;
     };
     const cachedModelContext = showLastMessage ? null : readCachedRender(false);
+    let contextSource: ContextReceiptSource = serverRender ? 'server' : cachedModelContext !== null ? 'cache' : 'worker';
 
     // ponytail: Codex's MCP normally starts the worker; this one bounded
     // fallback covers cold sessions without the old startup process chain.
@@ -535,6 +541,7 @@ export const contextHandler: EventHandler = {
       const cachedFallback = readCachedRender(false);
       if (cachedFallback !== null) {
         contextResult = cachedFallback;
+        contextSource = 'cache';
         workerOutageNotice = await consumeWorkerOutageNotice(input.sessionId);
       }
     }
@@ -583,6 +590,16 @@ export const contextHandler: EventHandler = {
     // retryable. A lost claim merely leaves a little unused render budget.
     if (showFallbackNotice && !markProFallbackNoticeShown()) notices.shift();
     additionalContext = composeSessionStartContext(additionalContext, notices.join('\n\n'), teamSection);
+
+    // Annealer: keep a receipt of what this session was just told (shared/annealer/context-receipts.ts).
+    // It records a delivery that already happened: it starts no inference, nothing replays it, and
+    // appendReceipt swallows every error so a session never fails or waits because of it.
+    if (additionalContext && receiptsEnabled()) {
+      appendReceipt(resolveDataDir(), receiptOf(additionalContext, {
+        at: new Date().toISOString(), sessionId: input.sessionId ?? null, platform: String(platform ?? ''),
+        projects: scopeProjects, source: contextSource, cacheAgeMs: modelCacheAgeMs,
+      }));
+    }
 
     // Antigravity CLI (like the former Gemini CLI) is hooks-based, not an
     // MCP-context-fetch platform like Codex — colorApiPath never populates

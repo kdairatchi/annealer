@@ -615,6 +615,46 @@ describe('contextHandler SessionStart path', () => {
       clearCache();
     });
 
+    // Annealer: the hook keeps a receipt of the text it delivers (shared/annealer/context-receipts.ts).
+    describe('context receipts', () => {
+      const receiptsPath = path.join(paths.dataDir(), 'annealer');
+      const newest = async () => (await import('../../../src/shared/annealer/context-receipts.js')).readReceipts(paths.dataDir(), 1)[0];
+      beforeEach(() => { rmSync(receiptsPath, { recursive: true, force: true }); delete process.env.ANNEALER_CONTEXT_RECEIPTS; });
+      afterEach(() => { rmSync(receiptsPath, { recursive: true, force: true }); delete process.env.ANNEALER_CONTEXT_RECEIPTS; });
+
+      it('records what the worker rendered, with the session, platform and projects', async () => {
+        workerContext = '# Recent work\n1042 9:14a 🔵 OAuth redirect is exploitable';
+        const { contextHandler } = await import('../../../src/cli/handlers/context.js');
+        const result = await contextHandler.execute({ sessionId: 'receipt-live', cwd: '/tmp/repo', platform: 'claude-code' });
+        const receipt = await newest();
+        expect(receipt.sessionId).toBe('receipt-live');
+        expect([receipt.source, receipt.cacheAgeMs, receipt.platform]).toEqual(['worker', null, 'claude-code']);
+        expect(receipt.projects).toEqual(['parent-project', 'repo-project']);
+        expect(receipt.memories).toEqual([{ id: '1042', title: 'OAuth redirect is exploitable' }]);
+        expect(receipt.chars).toBe(result.hookSpecificOutput!.additionalContext!.length);
+      });
+
+      it('records a cached body as cached, with its age, since the worker never saw that session', async () => {
+        seedCache('# Recent work\n77 2:05p 🔴 Served from the cache');
+        calls.length = 0;
+        const { contextHandler } = await import('../../../src/cli/handlers/context.js');
+        await contextHandler.execute({ sessionId: 'receipt-cached', cwd: '/tmp/repo', platform: 'claude-code' });
+        const receipt = await newest();
+        expect([receipt.sessionId, receipt.source]).toEqual(['receipt-cached', 'cache']);
+        expect(receipt.cacheAgeMs).toBeGreaterThanOrEqual(0);
+        expect(receipt.memories).toEqual([{ id: '77', title: 'Served from the cache' }]);
+      });
+
+      it('writes nothing when switched off, and the session gets the same context', async () => {
+        process.env.ANNEALER_CONTEXT_RECEIPTS = 'off';
+        workerContext = 'context from worker';
+        const { contextHandler } = await import('../../../src/cli/handlers/context.js');
+        const result = await contextHandler.execute({ sessionId: 'receipt-off', cwd: '/tmp/repo', platform: 'claude-code' });
+        expect(result.hookSpecificOutput!.additionalContext).toContain('context from worker');
+        expect(await newest()).toBeUndefined();
+      });
+    });
+
     it('shares one room definition between the cache read and the compose step', async () => {
       const { sessionStartBodyRoom } = await import('../../../src/cli/handlers/context.js');
       expect(sessionStartBodyRoom('', 1_000)).toBe(1_000);
