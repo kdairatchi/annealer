@@ -76,6 +76,7 @@ describe('context receipts', () => {
     const file = join(receiptsDir(dir), RECEIPTS_FILE);
     expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(2);
     expect(statSync(file).mode & 0o077).toBe(0);
+    expect(statSync(receiptsDir(dir)).mode & 0o077).toBe(0);
     expect(readReceipts(dir, 10).map((receipt) => receipt.sessionId)).toEqual(['sess-2', 'sess-1']);
     expect(readReceipts(dir, 1).map((receipt) => receipt.sessionId)).toEqual(['sess-2']);
     expect(JSON.stringify(readReceipts(dir, 10))).not.toContain('detail line that is not a memory');

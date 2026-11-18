@@ -117,8 +117,13 @@ export function appendReceipt(dataDir: string, receipt: ContextReceipt): boolean
   try {
     const dir = receiptsDir(dataDir);
     const file = join(dir, RECEIPTS_FILE);
-    mkdirSync(dir, { recursive: true });
-    if (existsSync(file) && statSync(file).size > RECEIPTS_MAX_BYTES) renameSync(file, `${file}.1`);
+    // Receipts name memories and projects: the folder and file are the owner's alone.
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try {
+      if (existsSync(file) && statSync(file).size > RECEIPTS_MAX_BYTES) renameSync(file, `${file}.1`);
+    } catch {
+      // Two sessions starting together can both try to roll the file over. The one that loses still writes its receipt.
+    }
     appendFileSync(file, `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
     return true;
   } catch {
