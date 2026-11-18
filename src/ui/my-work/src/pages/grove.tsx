@@ -7,11 +7,13 @@ import { ArrowRightIcon, InfoIcon } from 'lucide-react'
 import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { StateBadge } from '@/components/bits'
+import { Grove3D } from '@/components/grove-3d'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import type { LiveState, Request } from '@/data'
+import { GROVE_VIEW_LABEL, GROVE_VIEWS } from '@/growth/grove-view'
 import { GROWTH_POINTS, toGrove, type Grove as GroveModel, type GrowthBranch } from '@/growth/growth-model'
 import { LABELS_SHOWN, layoutTree, TREE_VIEW, TWIGS_SHOWN, type BranchLayout } from '@/growth/tree-layout'
 import { NEXT_STEP_NOT_RECORDED } from '@/live/to-work-model'
@@ -198,7 +200,10 @@ export function Grove({ onOpenRequest, onOpenFocus }: { onOpenRequest: (request:
   const grove = useMemo(() => toGrove(focusAreas, requests, otherAsks.length, NEXT_STEP_NOT_RECORDED, t('Other')), [focusAreas, requests, otherAsks, t])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = grove.branches.find((branch) => branch.id === selectedId) ?? null
+  const groveView = useStore((state) => state.view.groveView)
+  const setGroveView = useStore.use.setGroveView()
   const select = (id: string) => setSelectedId((current) => current === id ? null : id)
+  const openById = (requestId: string) => { const request = requests.find((entry) => entry.id === requestId); if (request) onOpenRequest(request) }
   const hidden = grove.branches.reduce((sum, branch) => sum + Math.max(0, branch.twigs.length - TWIGS_SHOWN), 0)
 
   return (
@@ -213,6 +218,11 @@ export function Grove({ onOpenRequest, onOpenFocus }: { onOpenRequest: (request:
           <div className="flex items-center gap-1.5">
             <Switch id="companion-shown" checked={companion.shown} onCheckedChange={(shown) => setCompanion({ shown })} />
             <Label htmlFor="companion-shown" className="text-xs">{interpolate(t('Show {name}'), { name: companion.name })}</Label>
+          </div>
+          <div role="group" aria-label={t('How the Grove is drawn')} className="flex rounded-[10px] border border-control-edge p-0.5">
+            {GROVE_VIEWS.map((option) => (
+              <Button key={option} size="xs" variant={groveView === option ? 'default' : 'ghost'} aria-pressed={groveView === option} onClick={() => setGroveView(option)}>{t(GROVE_VIEW_LABEL[option])}</Button>
+            ))}
           </div>
           <HowGrowthIsEarned />
         </div>
@@ -229,7 +239,9 @@ export function Grove({ onOpenRequest, onOpenFocus }: { onOpenRequest: (request:
         <p className="rounded-xl border bg-card/60 p-6 text-sm text-muted-foreground">{t('Nothing to grow yet. The Grove needs at least one focus area or one sorted request; keep working and check back after a refresh.')}</p>
       ) : (
         <>
-          <Tree grove={grove} selectedId={selected?.id ?? null} onSelect={select} />
+          {groveView === '3d'
+            ? <Grove3D grove={grove} selectedId={selected?.id ?? null} onSelect={setSelectedId} onOpenRequest={openById} />
+            : <Tree grove={grove} selectedId={selected?.id ?? null} onSelect={select} />}
           {hidden > 0 && <p className="text-xs text-muted-foreground">{interpolate(t('The tree draws the first {shown} requests of each branch; {count} more are listed on their branch.'), { shown: TWIGS_SHOWN, count: hidden })}</p>}
           <ul aria-label={t('Branches')} className={cn('flex gap-2 overflow-x-auto pb-1', grove.branches.length <= LABELS_SHOWN && 'xl:hidden')}>
             {grove.branches.map((branch, index) => <li key={branch.id} className="shrink-0"><BranchLabel branch={branch} index={index} selected={selected?.id === branch.id} onSelect={() => select(branch.id)} /></li>)}
