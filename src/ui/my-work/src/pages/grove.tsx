@@ -1,19 +1,21 @@
 // The Grove: My Work as a tree you can climb into. The trunk is you, each branch is a focus area, each twig is a
 // request and each leaf is a piece of work product. Branches thicken and level up from recorded evidence only
 // (growth/growth-model.ts); the sheet under the tree shows exactly where a branch's level came from.
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { ArrowRightIcon, InfoIcon } from 'lucide-react'
 import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { StateBadge } from '@/components/bits'
 import { Grove3D } from '@/components/grove-3d'
+import { Benchmarks, TuneUp } from '@/components/grove-panels'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import type { LiveState, Request } from '@/data'
-import { GROVE_VIEW_LABEL, GROVE_VIEWS } from '@/growth/grove-view'
+import { GROVE_PANEL_LABEL, GROVE_PANELS, GROVE_VIEW_LABEL, GROVE_VIEWS, type GrovePanel } from '@/growth/grove-view'
+import { tuneUp, type TuneUpTarget } from '@/growth/tune-up'
 import { GROWTH_POINTS, toGrove, type Grove as GroveModel, type GrowthBranch } from '@/growth/growth-model'
 import { LABELS_SHOWN, layoutTree, TREE_VIEW, TWIGS_SHOWN, type BranchLayout } from '@/growth/tree-layout'
 import { NEXT_STEP_NOT_RECORDED } from '@/live/to-work-model'
@@ -103,7 +105,7 @@ function BranchLabel({ branch, index, selected, onSelect, className, style }: { 
 }
 
 /** The sheet for one branch: where its level came from, and every request on it. */
-function BranchSheet({ branch, requests, onOpenRequest, onOpenFocus }: { branch: GrowthBranch; requests: readonly Request[]; onOpenRequest: (request: Request) => void; onOpenFocus: (focusAreaId: string) => void }) {
+function BranchSheet({ branch, requests, onOpenRequest, onOpenFocus, onSpotlight }: { branch: GrowthBranch; requests: readonly Request[]; onOpenRequest: (request: Request) => void; onOpenFocus: (focusAreaId: string) => void; onSpotlight: (requestId: string | null) => void }) {
   const { t } = useI18n()
   const byId = new Map(requests.map((request) => [request.id, request]))
   const adrift = branch.twigs.filter((twig) => twig.missingNextStep).length
@@ -145,7 +147,8 @@ function BranchSheet({ branch, requests, onOpenRequest, onOpenFocus }: { branch:
               const request = byId.get(twig.requestId)
               return (
                 <li key={twig.requestId}>
-                  <Button variant="bare" disabled={!request} onClick={() => request && onOpenRequest(request)} className="flex w-full items-center justify-start gap-3 rounded-none py-2 text-left text-sm font-normal whitespace-normal transition-colors hover:bg-accent/30">
+                  <Button variant="bare" disabled={!request} onClick={() => request && onOpenRequest(request)}
+                    onPointerEnter={() => onSpotlight(twig.requestId)} onPointerLeave={() => onSpotlight(null)} onFocus={() => onSpotlight(twig.requestId)} onBlur={() => onSpotlight(null)} className="flex w-full items-center justify-start gap-3 rounded-none py-2 text-left text-sm font-normal whitespace-normal transition-colors hover:bg-accent/30">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{twig.title ?? t('New request')}</span>
                       <span className="block text-xs text-muted-foreground">
@@ -192,9 +195,9 @@ function Tree({ grove, selectedId, onSelect }: { grove: GroveModel; selectedId: 
   )
 }
 
-export function Grove({ onOpenRequest, onOpenFocus }: { onOpenRequest: (request: Request) => void; onOpenFocus: (focusAreaId: string) => void }) {
+export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenRequest: (request: Request) => void; onOpenFocus: (focusAreaId: string) => void; onOpenPage: (page: 'rules' | 'suggested' | 'work') => void }) {
   const { t } = useI18n()
-  const { focusAreas, requests, otherAsks } = useWorkModel()
+  const { focusAreas, requests, otherAsks, rules } = useWorkModel()
   const companion = useStore((state) => state.view.companion)
   const setCompanion = useStore.use.setCompanion()
   const grove = useMemo(() => toGrove(focusAreas, requests, otherAsks.length, NEXT_STEP_NOT_RECORDED, t('Other')), [focusAreas, requests, otherAsks, t])
@@ -203,12 +206,19 @@ export function Grove({ onOpenRequest, onOpenFocus }: { onOpenRequest: (request:
   const selected = grove.branches.find((branch) => branch.id === selectedId) ?? null
   const groveView = useStore((state) => state.view.groveView)
   const setGroveView = useStore.use.setGroveView()
-  const select = (id: string) => setSelectedId(selectedId === id ? null : id)
+  const select = (id: string) => { const next = selectedId === id ? null : id; setSelectedId(next); if (next) setPanel('branch') }
   const openById = (requestId: string) => { const request = requests.find((entry) => entry.id === requestId); if (request) onOpenRequest(request) }
+  const steps = useMemo(() => tuneUp(requests, rules, focusAreas, NEXT_STEP_NOT_RECORDED), [requests, rules, focusAreas])
+  const [panel, setPanel] = useState<GrovePanel>(selectedId ? 'branch' : 'tune-up')
+  const [spotlight, setSpotlight] = useState<{ branchId: string | null; requestId: string | null }>({ branchId: null, requestId: null })
+  // Picking a branch anywhere shows its sheet.
+  const openBranch = (id: string | null) => { setSelectedId(id); if (id) setPanel('branch') }
+  const go = (target: TuneUpTarget) => { if (target.kind === 'request') openById(target.requestId); else onOpenPage(target.page) }
+  const sample = new URLSearchParams(window.location.search).get('source') === 'sample'
   const hidden = grove.branches.reduce((sum, branch) => sum + Math.max(0, branch.twigs.length - TWIGS_SHOWN), 0)
 
   return (
-    <section aria-labelledby="grove-heading" className="space-y-4">
+    <section aria-labelledby="grove-heading" className="space-y-4 pb-24">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="section-label">{t('Grow')}</p>
@@ -241,15 +251,25 @@ export function Grove({ onOpenRequest, onOpenFocus }: { onOpenRequest: (request:
       ) : (
         <>
           {groveView === '3d'
-            ? <Grove3D grove={grove} selectedId={selected?.id ?? null} onSelect={setSelectedId} onOpenRequest={openById} />
+            ? <Grove3D grove={grove} selectedId={selected?.id ?? null} spotlight={spotlight} onSelect={openBranch} onOpenRequest={openById} />
             : <Tree grove={grove} selectedId={selected?.id ?? null} onSelect={select} />}
           {hidden > 0 && <p className="text-xs text-muted-foreground">{interpolate(t('The tree draws the first {shown} requests of each branch; {count} more are listed on their branch.'), { shown: TWIGS_SHOWN, count: hidden })}</p>}
           <ul aria-label={t('Branches')} className={cn('flex gap-2 overflow-x-auto pb-1', grove.branches.length <= LABELS_SHOWN && 'xl:hidden')}>
             {grove.branches.map((branch, index) => <li key={branch.id} className="shrink-0"><BranchLabel branch={branch} index={index} selected={selected?.id === branch.id} onSelect={() => select(branch.id)} /></li>)}
           </ul>
-          {selected
-            ? <BranchSheet branch={selected} requests={requests} onOpenRequest={onOpenRequest} onOpenFocus={onOpenFocus} />
-            : <p className="rounded-xl border border-dashed bg-card/40 px-4 py-3 text-sm text-muted-foreground">{t('Pick a branch to open it.')}</p>}
+          <div role="group" aria-label={t('What to show under the tree')} className="flex w-fit rounded-[10px] border border-control-edge p-0.5">
+            {GROVE_PANELS.map((option) => (
+              <Button key={option} size="sm" variant={panel === option ? 'default' : 'ghost'} aria-pressed={panel === option} onClick={() => setPanel(option)}>
+                {t(GROVE_PANEL_LABEL[option])}
+                {option === 'tune-up' && steps.length > 0 && <span className="ml-1 font-mono text-[10px] tabular-nums opacity-80">{steps.length}</span>}
+              </Button>
+            ))}
+          </div>
+          {panel === 'tune-up' && <TuneUp steps={steps} onGo={go} />}
+          {panel === 'benchmarks' && <Benchmarks grove={grove} sample={sample} onOpenBranch={openBranch} onSpotlight={(branchId) => setSpotlight({ branchId, requestId: null })} />}
+          {panel === 'branch' && (selected
+            ? <BranchSheet branch={selected} requests={requests} onOpenRequest={onOpenRequest} onOpenFocus={onOpenFocus} onSpotlight={(requestId) => setSpotlight({ branchId: null, requestId })} />
+            : <p className="rounded-xl border border-dashed bg-card/40 px-4 py-3 text-sm text-muted-foreground">{t('Pick a branch on the tree to open it.')}</p>)}
         </>
       )}
     </section>

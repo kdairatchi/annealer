@@ -45,9 +45,11 @@ const LABEL_WIDTH = 150
 const LABEL_HEIGHT = 30
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value))
 
-export function Grove3D({ grove, selectedId, onSelect, onOpenRequest }: {
+export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest }: {
   grove: Grove
   selectedId: string | null
+  /** A branch or request another part of the page is pointing at (a table row, a list row); it lights up on the tree. */
+  spotlight: { branchId: string | null; requestId: string | null }
   /** Called with a branch id, or null when the pointer picks empty space. */
   onSelect: (branchId: string | null) => void
   onOpenRequest: (requestId: string) => void
@@ -65,9 +67,12 @@ export function Grove3D({ grove, selectedId, onSelect, onOpenRequest }: {
     camera: { ...HOME_CAMERA, target: { ...HOME_CAMERA.target } } as Camera3,
     goal: { yaw: HOME_CAMERA.yaw, pitch: HOME_CAMERA.pitch, zoom: 1, targetY: HOME_CAMERA.target.y },
     selectedId, hoverBranch: null as string | null, hoverRequest: null as string | null,
+    spotBranch: null as string | null, spotRequest: null as string | null,
     hits: [] as Hit[], embers: [] as Ember[], touchedAt: 0, bornAt: 0,
     drag: null as null | { x: number; y: number; yaw: number; pitch: number; moved: boolean },
   })
+
+  useEffect(() => { live.current.spotBranch = spotlight.branchId; live.current.spotRequest = spotlight.requestId }, [spotlight.branchId, spotlight.requestId])
 
   // A picked branch turns to face the viewer and the camera moves in on it; letting go returns to the whole tree.
   useEffect(() => {
@@ -131,7 +136,7 @@ export function Grove3D({ grove, selectedId, onSelect, onOpenRequest }: {
       const { camera, goal } = state
 
       // Left alone, the tree turns slowly. Any touch, hover or selection stops it.
-      const idle = !still && !state.drag && !state.selectedId && !state.hoverBranch && now - state.touchedAt > 2500
+      const idle = !still && !state.drag && !state.selectedId && !state.hoverBranch && !state.spotBranch && !state.spotRequest && now - state.touchedAt > 2500
       if (idle) goal.yaw += dt * 0.07
       const ease = still ? 1 : Math.min(1, dt * 5)
       camera.yaw += (goal.yaw - camera.yaw) * ease
@@ -179,7 +184,7 @@ export function Grove3D({ grove, selectedId, onSelect, onOpenRequest }: {
         const reveal = clamp((grown - limb.grows[0]) / limb.grows[1], 0, 1)
         if (reveal <= 0) continue
         const pieces = limb.points.length - 1
-        const lit = limb.branchId !== null && (limb.branchId === state.selectedId || limb.branchId === state.hoverBranch)
+        const lit = limb.branchId !== null && (limb.branchId === state.selectedId || limb.branchId === state.hoverBranch || limb.branchId === state.spotBranch)
         const colour = limb.kind === 'twig' ? palette.state[limb.state!] : lit ? palette.accent : palette.wood
         const strength = (limb.kind === 'twig' ? 1 : limb.kind === 'trunk' ? 0.8 : lit ? 1 : 0.62) * (dimmed(limb.branchId) ? 0.22 : 1)
         for (let piece = 0; piece < pieces; piece += 1) {
@@ -191,7 +196,7 @@ export function Grove3D({ grove, selectedId, onSelect, onOpenRequest }: {
           const a = at(from)
           const b = at(to)
           const thickness = limb.width[0] + (limb.width[1] - limb.width[0]) * ((piece + 0.5) / pieces)
-          const pixels = Math.max(1, thickness * (a.scale + b.scale) / 2) * (limb.requestId !== null && limb.requestId === state.hoverRequest ? 1.8 : 1)
+          const pixels = Math.max(1, thickness * (a.scale + b.scale) / 2) * (limb.requestId !== null && (limb.requestId === state.hoverRequest || limb.requestId === state.spotRequest) ? 1.8 : 1)
           const depth = (a.depth + b.depth) / 2
           paint.push({ depth, run: () => {
             context.globalAlpha = 1

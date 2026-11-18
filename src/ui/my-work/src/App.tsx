@@ -296,7 +296,7 @@ function LoadedApp() {
                     {view === 'work' && <MyWork focusAreaId={focusAreaId} onOpen={openRequestDrawer} onOpenFocus={goToFocus} onOpenRules={() => goToPage('rules')} />}
                     {view === 'suggested' && <SuggestedAreas onOpenFocus={goToFocus} />}
                     {view === 'past-focus' && <PastFocus onOpenFocus={goToFocus} />}
-                    {view === 'grove' && <Grove onOpenRequest={openRequestDrawer} onOpenFocus={goToFocus} />}
+                    {view === 'grove' && <Grove onOpenRequest={openRequestDrawer} onOpenFocus={goToFocus} onOpenPage={(page) => page === 'suggested' ? selectFocus({ kind: 'suggested' }) : goToPage(page)} />}
                     {view === 'rules' && <MyRules />}
                   </Suspense>
                 </main>
