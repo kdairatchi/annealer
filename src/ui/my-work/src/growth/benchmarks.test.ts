@@ -22,7 +22,7 @@ const requests = [
   request('o3', 'a', { next: { who: 'bot', text: MISSING } }),
   request('b1', 'b', { state: 'your-move' }),
 ]
-const grove = toGrove([area('a'), area('b'), area('empty')], requests, 0, MISSING)
+const grove = toGrove([area('a'), area('b'), area('empty')], requests, [], MISSING)
 
 test('shares are counts over counts, and a share with nothing under it is null', () => {
   const { branches, whole } = benchmarks(grove)

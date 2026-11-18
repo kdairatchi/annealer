@@ -4,13 +4,15 @@
 import type { FocusArea, Request } from '../data.ts'
 import type { OwnerRule } from '../data-rules.ts'
 import { GROWTH_POINTS } from './growth-model.ts'
+import type { TrailNote } from './trail.ts'
 
 /** The one definition of what a tune-up can ask for, in the order it asks. */
-export const TUNE_UP_KINDS = ['answer', 'check', 'next-step', 'rules', 'areas', 'unreviewed'] as const
+export const TUNE_UP_KINDS = ['reminder', 'answer', 'check', 'next-step', 'rules', 'areas', 'unreviewed'] as const
 export type TuneUpKind = (typeof TUNE_UP_KINDS)[number]
 
 /** Each kind as a short instruction. A new kind fails the typecheck until it has one. */
 export const TUNE_UP_LABEL: Record<TuneUpKind, string> = {
+  reminder: 'A reminder you left',
   answer: 'Answer what it asked',
   check: 'Check this version',
   'next-step': 'Give it a next step',
@@ -21,6 +23,7 @@ export const TUNE_UP_LABEL: Record<TuneUpKind, string> = {
 
 /** Why each kind matters, in one sentence. */
 export const TUNE_UP_REASON: Record<TuneUpKind, string> = {
+  reminder: 'You asked to be reminded of this on its branch. Mark it done on the trail when it is.',
   answer: 'The agent stopped and is waiting on you. Nothing on this request moves until you reply.',
   check: 'The work says it is done and wants your eyes. A version you mark checked earns growth.',
   'next-step': 'Nobody recorded what happens next, so this request is the kind that gets forgotten.',
@@ -29,7 +32,7 @@ export const TUNE_UP_REASON: Record<TuneUpKind, string> = {
   unreviewed: 'Work no review has read earns nothing and shows no progress.',
 }
 
-export type TuneUpTarget = { kind: 'request'; requestId: string } | { kind: 'page'; page: 'rules' | 'suggested' | 'work' }
+export type TuneUpTarget = { kind: 'request'; requestId: string } | { kind: 'page'; page: 'rules' | 'suggested' | 'work' } | { kind: 'branch'; branchId: string }
 
 export interface TuneUpStep {
   id: string
@@ -47,7 +50,7 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 /** At most this many request steps of one kind, so one busy state does not bury the rest of the session. */
 export const TUNE_UP_PER_KIND = 5
 
-export function tuneUp(requests: readonly Request[], rules: readonly OwnerRule[], focusAreas: readonly FocusArea[], nextStepMissingText: string): TuneUpStep[] {
+export function tuneUp(requests: readonly Request[], rules: readonly OwnerRule[], focusAreas: readonly FocusArea[], nextStepMissingText: string, dueReminders: readonly TrailNote[] = []): TuneUpStep[] {
   const open = requests.filter((request) => !request.closed)
   const forRequests = (kind: TuneUpKind, list: Request[], gain: number | null): TuneUpStep[] =>
     list.slice(0, TUNE_UP_PER_KIND).map((request) => ({ id: `${kind}:${request.id}`, kind, subject: titleOf(request), gain, target: { kind: 'request', requestId: request.id } }))
@@ -60,6 +63,7 @@ export function tuneUp(requests: readonly Request[], rules: readonly OwnerRule[]
   const undecidedAreas = focusAreas.filter((area) => area.status === 'suggested').length
   const unreviewed = open.filter((request) => request.state !== 'shipped' && request.progress.percent === null).length
   return [
+    ...dueReminders.slice(0, TUNE_UP_PER_KIND).map((note) => ({ id: `reminder:${note.id}`, kind: 'reminder' as const, subject: note.text, gain: null, target: { kind: 'branch' as const, branchId: note.branchId } })),
     ...forRequests('answer', waiting, null),
     ...forRequests('check', toCheck, toCheck.length ? GROWTH_POINTS.checked : null),
     ...forRequests('next-step', adrift, null),

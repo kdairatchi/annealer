@@ -2,7 +2,7 @@
 // A branch is a focus area, a twig is a request, a leaf is a piece of work product. Growth is earned by evidence
 // the worker already saved (a shipped request, a reviewed percent, a file or PR, a check by a person); time spent,
 // prompts sent and tool calls earn nothing. Pure, so `node --test` can load it.
-import { needsYou, OTHER_FOCUS_AREA_ID, type FocusArea, type LiveState, type Request } from '../data.ts'
+import { needsYou, OTHER_FOCUS_AREA_ID, type FocusArea, type FocusAsk, type LiveState, type Request } from '../data.ts'
 import { focusOverview } from '../live/focus-overview.ts'
 
 /** What each kind of recorded evidence is worth. One table, so the Grove can show the same numbers it adds up. */
@@ -57,7 +57,11 @@ export interface GrowthBranch {
   shipped: number
   /** Asks the owner made here that no request has picked up. */
   asksNotStarted: number
+  /** Those asks, most asked first: the buds on this branch. */
+  asks: GrowthAsk[]
 }
+
+export interface GrowthAsk { id: string; title: string; timesAsked: number }
 
 export interface Grove {
   branches: GrowthBranch[]
@@ -103,7 +107,7 @@ function twigOf(request: Request, nextStepMissingText: string): { twig: GrowthTw
 
 const SOURCE_ORDER: GrowthSource['label'][] = ['Shipped', 'Reviewed progress', 'Work product', 'Checked by you']
 
-function branchOf(id: string, name: string, goal: string | null, suggested: boolean, requests: readonly Request[], asksNotStarted: number, nextStepMissingText: string): GrowthBranch {
+function branchOf(id: string, name: string, goal: string | null, suggested: boolean, requests: readonly Request[], areaAsks: readonly FocusAsk[], nextStepMissingText: string): GrowthBranch {
   const open = requests.filter((request) => !request.closed)
   const totals = new Map<GrowthSource['label'], { points: number; count: number }>()
   const twigs = open.map((request) => {
@@ -122,7 +126,8 @@ function branchOf(id: string, name: string, goal: string | null, suggested: bool
     needsYou: open.filter(needsYou).length,
     working: open.filter((request) => request.state === 'working').length,
     shipped: open.filter((request) => request.state === 'shipped').length,
-    asksNotStarted,
+    asksNotStarted: areaAsks.length,
+    asks: [...areaAsks].sort((a, b) => b.timesAsked - a.timesAsked).map((ask) => ({ id: ask.id, title: ask.title, timesAsked: ask.timesAsked })),
   }
 }
 
@@ -130,12 +135,12 @@ function branchOf(id: string, name: string, goal: string | null, suggested: bool
  * The tree for one work model: kept areas in the owner's order, then suggested areas that already hold work, then
  * Other when it holds any. `nextStepMissingText` is the mapper's wording for a next step nobody recorded.
  */
-export function toGrove(focusAreas: readonly FocusArea[], requests: readonly Request[], otherAsks: number, nextStepMissingText: string, otherName = 'Other'): Grove {
+export function toGrove(focusAreas: readonly FocusArea[], requests: readonly Request[], otherAsks: readonly FocusAsk[], nextStepMissingText: string, otherName = 'Other'): Grove {
   const overview = focusOverview(focusAreas, requests)
   const branches = [
-    ...overview.areas.map((row) => branchOf(row.area.id, row.area.name, row.area.goal ?? row.area.about ?? null, false, row.requests, row.area.asks.length, nextStepMissingText)),
+    ...overview.areas.map((row) => branchOf(row.area.id, row.area.name, row.area.goal ?? row.area.about ?? null, false, row.requests, row.area.asks, nextStepMissingText)),
     ...overview.suggested.filter((row) => row.requests.some((request) => !request.closed))
-      .map((row) => branchOf(row.area.id, row.area.name, row.area.goal ?? row.area.about ?? null, true, row.requests, row.area.asks.length, nextStepMissingText)),
+      .map((row) => branchOf(row.area.id, row.area.name, row.area.goal ?? row.area.about ?? null, true, row.requests, row.area.asks, nextStepMissingText)),
     ...(overview.other.some((request) => !request.closed) ? [branchOf(OTHER_FOCUS_AREA_ID, otherName, null, false, overview.other, otherAsks, nextStepMissingText)] : []),
   ]
   const points = branches.reduce((sum, branch) => sum + branch.points, 0)

@@ -11,6 +11,7 @@ const area = (id: string, change: Partial<FocusArea> = {}): FocusArea => ({
   evidence: null, timesAsked: null, latestAt: null, quotes: [], asks: [], ...change,
 })
 
+const ask = (id: string, timesAsked: number) => ({ id, title: id, timesAsked, latestAt: '', quotes: [] })
 const request = (id: string, change: Partial<Request> = {}): Request => ({
   ...SAMPLE_REQUESTS[0], id, focusAreaId: 'a', state: 'idle', stage: 'Building', closed: false, checkedAt: undefined, detailCounts: undefined,
   workProduct: [], progress: { percent: null, readings: 0, reviewedAt: '' }, next: { who: 'bot', text: 'Carry on' }, ...change,
@@ -25,7 +26,7 @@ test('levels start at 0, 50, 150, 300 and report the distance to the next', () =
 })
 
 test('unreviewed, unshipped work with nothing to show earns nothing', () => {
-  const grove = toGrove([area('a')], [request('r1'), request('r2')], 0, MISSING)
+  const grove = toGrove([area('a')], [request('r1'), request('r2')], [], MISSING)
   assert.equal(grove.points, 0)
   assert.equal(grove.level, 1)
   assert.deepEqual(grove.branches[0].sources, [])
@@ -37,7 +38,7 @@ test('each kind of evidence earns its listed worth, and shipped work is not paid
     request('half', { progress: { percent: 50, readings: 1, reviewedAt: '' } }),
     request('files', { workProduct: Array.from({ length: 9 }, (_, index) => ({ kind: 'File' as const, label: `f${index}` })) }),
     request('checked', { checkedAt: '2026-11-17' }),
-  ], 0, MISSING)
+  ], [], MISSING)
   const [branch] = grove.branches
   assert.deepEqual(branch.twigs.map((twig) => twig.points), [
     GROWTH_POINTS.shipped, 15, GROWTH_POINTS.leavesCounted * GROWTH_POINTS.leaf, GROWTH_POINTS.checked,
@@ -54,7 +55,7 @@ test('each kind of evidence earns its listed worth, and shipped work is not paid
 })
 
 test('a compact overview counts its exact work product, not the bounded preview', () => {
-  const grove = toGrove([area('a')], [request('r', { detailCounts: { workProduct: 3 }, workProduct: [{ kind: 'File', label: 'one' }] })], 0, MISSING)
+  const grove = toGrove([area('a')], [request('r', { detailCounts: { workProduct: 3 }, workProduct: [{ kind: 'File', label: 'one' }] })], [], MISSING)
   assert.equal(grove.branches[0].twigs[0].leaves, 3)
 })
 
@@ -62,7 +63,7 @@ test('closed requests are off the tree; unsorted ones are counted and earn nothi
   const grove = toGrove([area('a')], [
     request('closed', { closed: true, state: 'shipped' }),
     request('lost', { focusAreaId: undefined, state: 'shipped' }),
-  ], 0, MISSING)
+  ], [], MISSING)
   assert.equal(grove.branches[0].twigs.length, 0)
   assert.equal(grove.points, 0)
   assert.equal(grove.sorting, 1)
@@ -71,10 +72,11 @@ test('closed requests are off the tree; unsorted ones are counted and earn nothi
 test('kept areas come first in the owner order, then suggested areas holding work, then Other', () => {
   const grove = toGrove(
     [area('second', { ownerRank: 2 }), area('first', { ownerRank: 1 }), area('idea', { status: 'suggested' }), area('empty-idea', { status: 'suggested' }), area('gone', { status: 'dismissed' })],
-    [request('r1', { focusAreaId: 'idea' }), request('r2', { focusAreaId: OTHER_FOCUS_AREA_ID })], 2, MISSING,
+    [request('r1', { focusAreaId: 'idea' }), request('r2', { focusAreaId: OTHER_FOCUS_AREA_ID })], [ask('rare', 1), ask('often', 9)], MISSING,
   )
   assert.deepEqual(grove.branches.map((branch) => [branch.id, branch.suggested]), [['first', false], ['second', false], ['idea', true], [OTHER_FOCUS_AREA_ID, false]])
   assert.equal(grove.branches.at(-1)!.asksNotStarted, 2)
+  assert.deepEqual(grove.branches.at(-1)!.asks.map((entry) => entry.id), ['often', 'rare'])
 })
 
 test('a missing next step is flagged on open work only', () => {
@@ -83,7 +85,7 @@ test('a missing next step is flagged on open work only', () => {
     request('blank', { next: { who: 'bot', text: '  ' } }),
     request('known'),
     request('done', { state: 'shipped', next: { who: 'bot', text: MISSING } }),
-  ], 0, MISSING)
+  ], [], MISSING)
   assert.deepEqual(grove.branches[0].twigs.map((twig) => twig.missingNextStep), [true, true, false, false])
 })
 
@@ -91,7 +93,7 @@ test('the layout is the same every time and stays inside the drawing', () => {
   const requests = Array.from({ length: 12 }, (_, index) => request(`r${index}`, { focusAreaId: index % 2 ? 'a' : 'b', workProduct: [{ kind: 'File', label: 'x' }] }))
   const areas = Array.from({ length: 12 }, (_, index) => area(String.fromCharCode(97 + index)))
   const grown: Request[] = requests.map((entry) => ({ ...entry, focusAreaId: 'l', progress: { percent: 100, readings: 1, reviewedAt: '' } }))
-  const grove = toGrove(areas, [...grown, ...requests], 0, MISSING)
+  const grove = toGrove(areas, [...grown, ...requests], [], MISSING)
   const layout = layoutTree(grove)
   assert.deepEqual(layoutTree(grove), layout)
   assert.deepEqual(layout.branches.slice(0, 5).map((branch) => branch.side), ['left', 'right', 'left', 'right', 'left'])
@@ -112,7 +114,7 @@ test('the layout is the same every time and stays inside the drawing', () => {
 })
 
 test('an empty model still has a trunk to stand on', () => {
-  const layout = layoutTree(toGrove([], [], 0, MISSING))
+  const layout = layoutTree(toGrove([], [], [], MISSING))
   assert.deepEqual(layout.branches, [])
   assert.ok(layout.trunk.startsWith('M 500 510'))
 })

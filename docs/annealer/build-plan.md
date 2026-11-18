@@ -43,19 +43,19 @@ Checked against the source on 2026-11-18.
 
 | Step | Status |
 | --- | --- |
-| 1. Grove and companion | Built, in pull request #1 |
-| 2. Climb into the tree | Started: a picked branch turns to face you and is kept in the URL |
-| Tune-up (self-improvement session) | Built, in pull request #1 |
-| 3. Context receipts | Not started |
-| 4. Sessions on the tree | Not started |
-| 5. Themes and customization | Not started (companion name and colours are done) |
-| 6. Quests | Not started |
-| 7. Take the wheel | Not started |
-| 8. Reviewer on security work | Not started; needs a finding first |
-| 9. Proof | Started: the benchmark table and daily growth snapshots are built |
+| 1. Grove and companion | Built and merged (pull request #1) |
+| 2. Climb into the tree | Built: climb into a branch, rules as roots, unstarted asks as buds |
+| Tune-up (self-improvement session) | Built and merged |
+| 3. Context receipts | Not started. Changes the worker; needs a run on real data |
+| 4. Sessions on the tree | Not started. Changes the worker; needs a run on real data |
+| 5. Themes and customization | Built: accent colours, motion setting, three companion creatures unlocked by level |
+| 6. Quests | Partly built: the trail (notes, links, reminders) in the browser. Scheduled runs need the worker |
+| 7. Take the wheel | Not started. Changes the worker; needs a run on real data |
+| 8. Reviewer on security work | Answered from the source: a setting already exists (see step 8) |
+| 9. Proof | Partly built: benchmark table and daily snapshots. The rest needs the worker |
 
-Step 1 has been run only on the sample fixtures in headless Chromium. Before anything else, run it against a real
-`~/.claude-mem` database, on a phone, and in Safari and Firefox.
+Everything built so far has been run only on the sample fixtures in headless Chromium. Before anything else, run it
+against a real `~/.claude-mem` database, on a phone, and in Safari and Firefox.
 
 ## Build order
 
@@ -92,9 +92,15 @@ is a few hundred line segments, and a library would have been most of the bundle
 Picking a branch already turns the tree to face it, moves the camera in, and puts the branch in the URL. This step
 goes further: the tree redraws as that branch alone.
 
-- `Draw one branch as its own tree` (requests as limbs, work product as leaves)
-- `Show the rules that apply to a branch as its roots` (approved rules only; waiting ones as pale roots)
-- `Show asks nobody started as buds`
+Built:
+
+- `Draw one branch as its own tree, with buds and roots` (requests as limbs, work product as leaves)
+- Rules are the whole tree's roots, not a branch's: a rule is scoped to everywhere or to a repo, never to a focus
+  area, so tying one to a branch would be invented. Solid roots are rules that are on, dashed ones are waiting.
+- Asks nobody started are hollow rings: on their branch in the whole tree, up the trunk once climbed into.
+
+Left:
+
 - `Pick a leaf to open that file, commit or pull request`
 - `Let the companion walk the ground under the tree`
 
@@ -132,17 +138,31 @@ Sessions exist in the classic viewer. My Work is organised by request, and nothi
 
 A theme is a named set of the existing colour tokens, so every current page follows it for free.
 
-- `Let a theme be picked and remembered` (Paper and Dusk as today, plus Ember: near-black with a red-orange glow)
-- `Add a density and motion setting`
-- `Let the companion's sprite be swapped` (more creatures, each a frame table like the first)
-- `Unlock companion looks at Grove levels` (earned by level, never bought)
+Built:
+
+- `Add accent colours, a motion setting and two more companion creatures` (five accents written over the theme's
+  primary tokens, each tested to keep the shipped orange's contrast; Calm motion; Sprout at level 2, Bolt at level 4)
+
+Left:
+
 - `Let a branch be given its own colour`
+- `Add a density setting`
+- A full third theme (new background and surface tokens) was not built: the accent covers the colour, and a new
+  theme has to pass upstream's contrast rules token by token.
 
 ### 6. Quests: nothing gets forgotten
 
 A quest is a saved instruction the worker runs on a schedule and reports on in My Work. It reads saved records.
 It must not start paid inference by itself: a quest that needs an agent turn waits for you to press the button.
 
+Built, in the browser only:
+
+- `Add the trail: notes, links and reminders on a branch` (a due reminder is the first step of the tune-up; only
+  http and https links are kept; it can remind you only while the page is open)
+
+Left, all in the worker:
+
+- `Move the trail into the worker, so it follows you across browsers`
 - `Add a quest record and its states`
 - `Nudge: list open requests with no recorded next step every morning`
 - `Loop: re-check a request until its next step is recorded`
@@ -160,12 +180,15 @@ Upstream can already continue a conversation from the page. This step adds the r
 
 ### 8. Reviewer on security work
 
-On security work the learning run can fail with the agent's own safeguards, and the refresh stops. Upstream already
-lets observation extraction run on a local or third-party model. Whether the My Work learning run can use that
-setting is not known yet; it runs through the agent's command line.
+On security work the My Work refresh can fail with the agent's own safeguards, and the refresh stops.
 
-- `Find out which model path the learning run uses, and write it down here`
-- then one of: `Let the learning run use the configured provider`, or `Say plainly when a review was refused and why`
+Found in `src/services/work-view/refresh-task.ts`: the refresh runs on a logged-in agent CLI by default, and
+upstream already has a setting to change that. `CLAUDE_MEM_WORK_VIEW_AGENT=api` makes the refresh use the API
+provider that `CLAUDE_MEM_PROVIDER` selects, including `openai-compatible` (Ollama, LM Studio). It spends that
+provider's credit, which is why it is opt-in. This was read from the source and has not been run.
+
+- `Try the refresh on a local model with those two settings, and record what happened here`
+- `Say plainly on the page when a review was refused, and point at the setting`
 - `Say which model wrote a review`
 
 ### 9. Proof

@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { ArrowRightIcon, SproutIcon } from 'lucide-react'
-import { useI18n } from '@/lib/i18n'
+import { interpolate, useI18n } from '@/lib/i18n'
 import { useNow } from '@/lib/use-now'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -17,8 +17,8 @@ import { NEXT_STEP_NOT_RECORDED } from '@/live/to-work-model'
 import { useRecentChanges, useStore, useWorkModel } from '@/store'
 import { COMPANION_MOOD_LABEL, companionStatus, type CompanionMood } from './companion-mood'
 import {
-  COMPANION_COLORS, COMPANION_FRAME_MS, COMPANION_FRAMES, COMPANION_NAME_MAX, COMPANION_PALETTE_LABEL, COMPANION_PALETTES,
-  SPRITE_SIZE, type CompanionPalette, type SpriteFrame, type SpritePixel,
+  COMPANION_COLORS, COMPANION_FRAME_MS, COMPANION_NAME_MAX, COMPANION_PALETTE_LABEL, COMPANION_PALETTES, COMPANION_SPECIES, COMPANION_SPECIES_LABEL,
+  COMPANION_UNLOCK_LEVEL, SPECIES_FRAMES, speciesUnlocked, SPRITE_SIZE, type CompanionPalette, type CompanionSpecies, type SpriteFrame, type SpritePixel,
 } from './companion-sprites'
 
 /** One frame, drawn as crisp squares so it stays pixel art at any size. */
@@ -32,9 +32,9 @@ export function Sprite({ frame, palette, className }: { frame: SpriteFrame; pale
 }
 
 /** Steps through a mood's frames. With reduced motion it holds the first frame. */
-function useFrame(mood: CompanionMood): SpriteFrame {
+function useFrame(mood: CompanionMood, species: CompanionSpecies): SpriteFrame {
   const still = useReducedMotion()
-  const frames = COMPANION_FRAMES[mood]
+  const frames = SPECIES_FRAMES[species][mood]
   const [cycle, setCycle] = useState({ mood, step: 0 })
   // A new mood starts from its first frame.
   if (cycle.mood !== mood) setCycle({ mood, step: 0 })
@@ -64,8 +64,10 @@ export function Companion({ onOpenRequest, onOpenGrove }: { onOpenRequest: (requ
   // The cheer ends on the clock, so the clock runs only while there is a change that could still be cheered.
   const now = useNow(changes.length > 0)
   const status = useMemo(() => companionStatus(requests, changes, now, NEXT_STEP_NOT_RECORDED), [requests, changes, now])
-  const level = useMemo(() => toGrove(focusAreas, requests, otherAsks.length, NEXT_STEP_NOT_RECORDED).level, [focusAreas, requests, otherAsks])
-  const frame = useFrame(status.mood)
+  const level = useMemo(() => toGrove(focusAreas, requests, otherAsks, NEXT_STEP_NOT_RECORDED).level, [focusAreas, requests, otherAsks])
+  // A creature saved before its level was reached (or after the tree shrank) falls back to the first one.
+  const species = speciesUnlocked(companion.species, level) ? companion.species : COMPANION_SPECIES[0]
+  const frame = useFrame(status.mood, species)
   // The field holds what is being typed; a saved (cleaned) name replaces it.
   const [name, setName] = useState(companion.name)
   const [savedName, setSavedName] = useState(companion.name)
@@ -119,11 +121,28 @@ export function Companion({ onOpenRequest, onOpenGrove }: { onOpenRequest: (requ
                 {COMPANION_PALETTES.map((palette) => (
                   <Button key={palette} variant="bare" aria-pressed={companion.palette === palette} title={t(COMPANION_PALETTE_LABEL[palette])} onClick={() => setCompanion({ palette })}
                     className={cn('flex size-9 items-center justify-center rounded-lg border bg-card transition-colors', companion.palette === palette ? 'border-primary' : 'border-control-edge hover:border-accent-border')}>
-                    <Sprite frame={COMPANION_FRAMES.working[1]} palette={palette} className="size-6" />
+                    <Sprite frame={SPECIES_FRAMES[species].working[1]} palette={palette} className="size-6" />
                     <span className="sr-only">{t(COMPANION_PALETTE_LABEL[palette])}</span>
                   </Button>
                 ))}
               </div>
+            </fieldset>
+            <fieldset className="space-y-1">
+              <legend className="text-xs font-medium">{t('Creature')}</legend>
+              <div className="flex gap-1.5">
+                {COMPANION_SPECIES.map((option) => {
+                  const unlocked = speciesUnlocked(option, level)
+                  return (
+                    <Button key={option} variant="bare" disabled={!unlocked} aria-pressed={species === option} onClick={() => setCompanion({ species: option })}
+                      title={unlocked ? t(COMPANION_SPECIES_LABEL[option]) : interpolate(t('{name} unlocks at Grove level {level}'), { name: t(COMPANION_SPECIES_LABEL[option]), level: COMPANION_UNLOCK_LEVEL[option] })}
+                      className={cn('flex h-14 w-16 flex-col items-center justify-center gap-0.5 rounded-lg border bg-card transition-colors', species === option ? 'border-primary' : 'border-control-edge hover:border-accent-border', !unlocked && 'opacity-45')}>
+                      <Sprite frame={SPECIES_FRAMES[option].working[1]} palette={companion.palette} className={cn('size-7', !unlocked && 'grayscale')} />
+                      <span className="font-mono text-[9px] tracking-wider text-muted-foreground">{unlocked ? t(COMPANION_SPECIES_LABEL[option]) : `LV ${COMPANION_UNLOCK_LEVEL[option]}`}</span>
+                    </Button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">{t('Creatures unlock as the Grove levels up from recorded work.')}</p>
             </fieldset>
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground">{t('The Grove can bring it back.')}</p>

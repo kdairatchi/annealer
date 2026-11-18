@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { SAMPLE_REQUESTS, type FocusArea, type Request } from '../data.ts'
 import { toGrove } from './growth-model.ts'
-import { angleBetween, buildTree3, distanceToSegment, HOME_CAMERA, project, TREE_HEIGHT, yawFacing } from './tree-3d.ts'
+import { angleBetween, BRANCH_LIMBS_SHOWN, buildBranchTree3, buildTree3, distanceToSegment, HOME_CAMERA, project, ROOTS_SHOWN, TREE_HEIGHT, yawFacing } from './tree-3d.ts'
 import { TWIGS_SHOWN } from './tree-layout.ts'
 
 const MISSING = 'Next step not recorded'
@@ -16,7 +16,7 @@ const requests = [
   ...Array.from({ length: 10 }, (_, index) => request(`a${index}`, 'a', { workProduct: Array.from({ length: 8 }, () => ({ kind: 'File' as const, label: 'x' })) })),
   request('b0', 'b', { state: 'working', next: { who: 'bot', text: MISSING } }),
 ]
-const grove = toGrove(areas, requests, 0, MISSING)
+const grove = toGrove(areas, requests, [], MISSING)
 
 test('the same model grows the same tree, with one trunk, a limb and a pin per branch', () => {
   const tree = buildTree3(grove)
@@ -52,8 +52,8 @@ test('everything grows in within the opening animation', () => {
 })
 
 test('an empty grove is a bare trunk', () => {
-  const tree = buildTree3(toGrove([], [], 0, MISSING))
-  assert.deepEqual([tree.limbs.length, tree.leaves.length, tree.pins.length], [1, 0, 0])
+  const tree = buildTree3(toGrove([], [], [], MISSING))
+  assert.deepEqual([tree.limbs.length, tree.leaves.length, tree.pins.length, tree.buds.length], [1, 0, 0, 0])
 })
 
 test('the camera centres its target, shrinks what is further away, and a half turn mirrors left and right', () => {
@@ -94,4 +94,35 @@ test('angles take the short way round, and pointer distance is measured to the s
   assert.equal(distanceToSegment(5, 3, 0, 0, 10, 0), 3)
   assert.equal(distanceToSegment(13, 4, 0, 0, 10, 0), 5)
   assert.equal(distanceToSegment(3, 4, 0, 0, 0, 0), 5)
+})
+
+test('rules are roots: one per rule that is on, dashed ones for rules still waiting, capped', () => {
+  const rooted = buildTree3(grove, { on: 3, waiting: 2 }).limbs.filter((limb) => limb.kind === 'root')
+  assert.deepEqual(rooted.map((root) => root.dashed), [false, false, false, true, true])
+  assert.ok(rooted.every((root) => root.branchId === null && root.points.at(-1)!.y < 0.1))
+  assert.equal(buildTree3(grove, { on: 40, waiting: 40 }).limbs.filter((limb) => limb.kind === 'root').length, ROOTS_SHOWN)
+  assert.equal(buildTree3(grove).limbs.filter((limb) => limb.kind === 'root').length, 0)
+})
+
+test('asks nobody started are buds on their branch', () => {
+  const asks = [1, 2, 3, 4, 5, 6].map((count) => ({ id: `k${count}`, title: `ask ${count}`, timesAsked: count, latestAt: '', quotes: [] }))
+  const budding = toGrove([{ ...area('a'), asks }, area('b')], requests, [], MISSING)
+  const tree = buildTree3(budding)
+  assert.deepEqual(tree.buds.map((bud) => [bud.branchId, bud.timesAsked]), [['a', 6], ['a', 5], ['a', 4], ['a', 3]])
+})
+
+test('a branch climbed into is its own tree: a limb and a pin per request, picked by request id', () => {
+  const [branch] = grove.branches
+  const tree = buildBranchTree3(branch)
+  assert.deepEqual(buildBranchTree3(branch), tree)
+  const limbs = tree.limbs.filter((limb) => limb.kind === 'twig')
+  assert.equal(limbs.length, Math.min(branch.twigs.length, BRANCH_LIMBS_SHOWN))
+  assert.deepEqual(limbs.map((limb) => [limb.branchId, limb.requestId]), branch.twigs.map((twig) => [twig.requestId, twig.requestId]))
+  assert.deepEqual(tree.pins.map((pin) => pin.branchId), branch.twigs.map((twig) => twig.requestId))
+  assert.equal(tree.leaves.filter((leaf) => leaf.requestId === 'a0').length, 8)
+  for (const yaw of [0, 2, 4]) for (const limb of tree.limbs) for (const point of limb.points) {
+    const at = project(point, { ...HOME_CAMERA, yaw }, 1100, 620)
+    assert.ok(at.x > 0 && at.x < 1100 && at.y > 0 && at.y < 620)
+  }
+  assert.equal(buildBranchTree3(grove.branches[2]).limbs.length, 1)
 })

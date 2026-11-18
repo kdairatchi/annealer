@@ -71,8 +71,10 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       filter: 'all',
       sort: 'attention',
       focusArtwork: 'full',
-      companion: { shown: true, name: COMPANION_DEFAULT_NAME, palette: 'ember' },
+      companion: { shown: true, name: COMPANION_DEFAULT_NAME, palette: 'ember', species: 'cinder' },
       groveView: '3d',
+      groveMotion: 'full',
+      accent: 'ember',
     },
 
     goToPage: (page) => navigate({ section: page, focusChoice: null, groveBranch: null }),
@@ -151,6 +153,8 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
     setSort: (sort) => set((state) => { state.view.sort = sort }),
     setFocusArtwork: (focusArtwork) => set((state) => { state.view.focusArtwork = focusArtwork }),
     setGroveView: (groveView) => set((state) => { state.view.groveView = groveView }),
+    setGroveMotion: (groveMotion) => set((state) => { state.view.groveMotion = groveMotion }),
+    setAccent: (accent) => set((state) => { state.view.accent = accent }),
     setCompanion: (change) => set((state) => {
       Object.assign(state.view.companion, change)
       state.view.companion.name = companionName(state.view.companion.name)
