@@ -2,15 +2,16 @@
 // (persisted: index.ts names the fields).
 import { OTHER_FOCUS_AREA_ID } from '../../data.ts'
 import { resolveFocusAreaId } from '../../live/to-focus-model.ts'
-import { usageReport } from '../../live/usage.ts'
+import { COMPANION_DEFAULT_NAME, companionName } from '../../companion/companion-sprites.ts'
+import { usageReport, usageViewOf } from '../../live/usage.ts'
 import type { SliceCreator } from '../create-store.ts'
 import type { OpenRequest, Page, Section, StoreEnvironment, ViewSlice, ViewState } from '../store-types.ts'
 
-const SECTIONS: readonly Section[] = ['work', 'rules', 'suggested', 'past-focus']
+const SECTIONS: readonly Section[] = ['work', 'grove', 'rules', 'suggested', 'past-focus']
 
-interface Route { page: Page; section: Section; focusChoice: string | null; requestId: string | null; theme: boolean | null }
+interface Route { page: Page; section: Section; focusChoice: string | null; groveBranch: string | null; requestId: string | null; theme: boolean | null }
 
-/** `?setup=1` is the installer handoff; `?view=` a page other than My Work; `?focus=` an area; `?request=` the open drawer. */
+/** `?setup=1` is the installer handoff; `?view=` a page other than My Work; `?focus=` an area; `?branch=` the Grove's open branch; `?request=` the open drawer. */
 export function readRoute(url: URL): Route {
   const view = url.searchParams.get('view') as Section | null
   const section = view && SECTIONS.includes(view) ? view : 'work'
@@ -18,6 +19,7 @@ export function readRoute(url: URL): Route {
     page: url.searchParams.get('setup') === '1' ? 'setup' : 'app',
     section,
     focusChoice: section === 'work' ? url.searchParams.get('focus') || null : null,
+    groveBranch: section === 'grove' ? url.searchParams.get('branch') || null : null,
     requestId: url.searchParams.get('request') || null,
     // `?theme=dark|light` starts the wireframe's theme switch; without it, the system preference does.
     theme: url.searchParams.get('theme') === 'dark' ? true : url.searchParams.get('theme') === 'light' ? false : null,
@@ -25,11 +27,12 @@ export function readRoute(url: URL): Route {
 }
 
 /** The same URL with the route's params; every other param (`source`, `theme`) is kept. */
-export function writeRoute(url: URL, view: Pick<ViewState, 'section' | 'focusChoice' | 'openRequest'>): URL {
+export function writeRoute(url: URL, view: Pick<ViewState, 'section' | 'focusChoice' | 'groveBranch' | 'openRequest'>): URL {
   const next = new URL(url)
   const set = (name: string, value: string | null) => { if (value) next.searchParams.set(name, value); else next.searchParams.delete(name) }
   set('view', view.section === 'work' ? null : view.section)
   set('focus', view.section === 'work' ? view.focusChoice : null)
+  set('branch', view.section === 'grove' ? view.groveBranch : null)
   set('request', view.openRequest?.id ?? null)
   return next
 }
@@ -39,11 +42,11 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
   let openReported = false
 
   /** Shows the next place and records it in the URL. Showing another section is counted with the section it left. */
-  const navigate = (change: Partial<Pick<ViewState, 'section' | 'focusChoice' | 'openRequest'>>, replace = false) => {
+  const navigate = (change: Partial<Pick<ViewState, 'section' | 'focusChoice' | 'groveBranch' | 'openRequest'>>, replace = false) => {
     const previous = get().view.section
     set((state) => { Object.assign(state.view, change) })
     const next = get().view.section
-    if (environment.reportsUsage && next !== previous) environment.sendUsage(usageReport(next, previous))
+    if (environment.reportsUsage && next !== previous) environment.sendUsage(usageReport(usageViewOf(next), usageViewOf(previous)))
     const current = new URL(environment.href())
     const url = writeRoute(current, get().view)
     if (url.href !== current.href) environment.writeUrl(url, replace)
@@ -59,6 +62,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       page: route.page,
       section: route.section,
       focusChoice: route.focusChoice,
+      groveBranch: route.groveBranch,
       openRequest: route.requestId ? { id: route.requestId, fromLiveFeed: null, fallback: null } : null,
       workspace: { mode: 'home', team: false, connected: false },
       showSpec: false,
@@ -67,14 +71,17 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       filter: 'all',
       sort: 'attention',
       focusArtwork: 'full',
+      companion: { shown: true, name: COMPANION_DEFAULT_NAME, palette: 'ember' },
+      groveView: '3d',
     },
 
-    goToPage: (page) => navigate({ section: page, focusChoice: null }),
-    goToFocus: (focusAreaId) => navigate({ section: 'work', focusChoice: focusAreaId, openRequest: null }),
+    goToPage: (page) => navigate({ section: page, focusChoice: null, groveBranch: null }),
+    openGroveBranch: (branchId) => navigate({ section: 'grove', focusChoice: null, groveBranch: branchId }),
+    goToFocus: (focusAreaId) => navigate({ section: 'work', focusChoice: focusAreaId, groveBranch: null, openRequest: null }),
     selectFocus: (selection) => {
       if (!selection) get().goToPage('work')
       else if (selection.kind === 'area') get().goToFocus(selection.focusAreaId)
-      else navigate({ section: selection.kind, focusChoice: null })
+      else navigate({ section: selection.kind, focusChoice: null, groveBranch: null })
     },
 
     openRequestDrawer: (request) => {
@@ -101,9 +108,10 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       set((state) => {
         state.view.section = next.section
         state.view.focusChoice = next.focusChoice
+        state.view.groveBranch = next.groveBranch
         state.view.openRequest = !next.requestId ? null : open?.id === next.requestId ? open : { id: next.requestId, fromLiveFeed: null, fallback: null }
       })
-      if (environment.reportsUsage && next.section !== previous) environment.sendUsage(usageReport(next.section, previous))
+      if (environment.reportsUsage && next.section !== previous) environment.sendUsage(usageReport(usageViewOf(next.section), usageViewOf(previous)))
       get().reconcileOpenRequest()
     },
 
@@ -111,7 +119,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       const url = new URL(environment.href())
       url.searchParams.set('setup', '1')
       environment.writeUrl(url, true)
-      if (environment.reportsUsage) environment.sendUsage(usageReport('setup', get().view.section))
+      if (environment.reportsUsage) environment.sendUsage(usageReport('setup', usageViewOf(get().view.section)))
       set((state) => { state.view.page = 'setup' })
     },
 
@@ -132,7 +140,7 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
       if (!environment.reportsUsage || openReported) return
       openReported = true
       const { page, section } = get().view
-      environment.sendUsage(usageReport(page === 'setup' ? 'setup' : section, null))
+      environment.sendUsage(usageReport(page === 'setup' ? 'setup' : usageViewOf(section), null))
     },
 
     setWorkspace: (change) => set((state) => { Object.assign(state.view.workspace, change) }),
@@ -142,6 +150,11 @@ export const createViewSlice = (environment: StoreEnvironment): SliceCreator<Vie
     setFilter: (filter) => set((state) => { state.view.filter = filter }),
     setSort: (sort) => set((state) => { state.view.sort = sort }),
     setFocusArtwork: (focusArtwork) => set((state) => { state.view.focusArtwork = focusArtwork }),
+    setGroveView: (groveView) => set((state) => { state.view.groveView = groveView }),
+    setCompanion: (change) => set((state) => {
+      Object.assign(state.view.companion, change)
+      state.view.companion.name = companionName(state.view.companion.name)
+    }),
   }
 }
 
