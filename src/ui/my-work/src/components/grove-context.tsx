@@ -81,21 +81,26 @@ function ReceiptRow({ receipt, request, open, picked, canPick, onToggle, onPick,
   )
 }
 
-export function ContextPanel({ sample, requests, onOpenRequest }: { sample: boolean; requests: readonly Request[]; onOpenRequest: (request: Request) => void }) {
+/**
+ * `source` says where this page's data comes from. Receipts are files on the machine that ran the sessions, so only
+ * the local worker can list them: the hosted page does not ask, and says why.
+ */
+export function ContextPanel({ source, requests, onOpenRequest }: { source: 'sample' | 'local' | 'cloud'; requests: readonly Request[]; onOpenRequest: (request: Request) => void }) {
   const { t } = useI18n()
-  const [load, setLoad] = useState<Load>(sample ? { state: 'ready', receipts: SAMPLE_RECEIPTS } : { state: 'loading' })
+  const sample = source === 'sample'
+  const [load, setLoad] = useState<Load>(sample ? { state: 'ready', receipts: SAMPLE_RECEIPTS } : source === 'cloud' ? { state: 'ready', receipts: [] } : { state: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [picked, setPicked] = useState<string[]>([])
   useEffect(() => {
-    if (sample) return
+    if (source !== 'local') return
     const stop = new AbortController()
     fetch(RECEIPTS_URL, { signal: stop.signal, headers: { Accept: 'application/json' } })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error(String(response.status))))
       .then((body) => setLoad({ state: 'ready', receipts: toReceipts(body) }))
       .catch((error) => { if (!stop.signal.aborted) { console.warn('Context receipts could not be loaded', error); setLoad({ state: 'failed' }) } })
     return () => stop.abort()
-  }, [sample, attempt])
+  }, [source, attempt])
 
   const receipts = useMemo(() => (load.state === 'ready' ? load.receipts : []), [load])
   const totals = useMemo(() => receiptTotals(receipts), [receipts])
@@ -112,12 +117,13 @@ export function ContextPanel({ sample, requests, onOpenRequest }: { sample: bool
           <p className="section-label">{t('Context')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('What each session was told when it started. The hook saves a receipt of the text it hands the agent: which memories, how big, and whether it was rendered fresh or read from the saved copy. The text itself is not kept.')}</p>
         </div>
-        {!sample && <Button size="sm" variant="outline" disabled={load.state === 'loading'} onClick={() => { setLoad({ state: 'loading' }); setAttempt(attempt + 1) }}><RefreshCwIcon />{t('Reload')}</Button>}
+        {source === 'local' && <Button size="sm" variant="outline" disabled={load.state === 'loading'} onClick={() => { setLoad({ state: 'loading' }); setAttempt(attempt + 1) }}><RefreshCwIcon />{t('Reload')}</Button>}
       </div>
 
       {load.state === 'loading' && <p className="text-sm text-muted-foreground">{t('Loading receipts…')}</p>}
       {load.state === 'failed' && <p className="text-sm text-attention-foreground">{t('Receipts could not be loaded. They come from the local worker; check it is running and is this fork’s build, then reload.')}</p>}
-      {load.state === 'ready' && receipts.length === 0 && <p className="text-sm text-muted-foreground">{t('No receipts yet. One is written each time an agent session starts with this fork’s hooks installed. Start a new session, then reload.')}</p>}
+      {source === 'cloud' && <p className="text-sm text-muted-foreground">{t('Receipts are kept on the machine that ran the sessions and are not uploaded. Open My Work on that machine to see them.')}</p>}
+      {source === 'local' && load.state === 'ready' && receipts.length === 0 && <p className="text-sm text-muted-foreground">{t('No receipts yet. One is written each time an agent session starts with this fork’s hooks installed. Start a new session, then reload.')}</p>}
 
       {receipts.length > 0 && (
         <>
