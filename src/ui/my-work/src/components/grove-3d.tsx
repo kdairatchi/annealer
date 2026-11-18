@@ -4,7 +4,7 @@
 // There is no 3D library here on purpose: the tree is a few hundred line segments, and the projection is a dozen lines
 // in growth/tree-3d.ts. Everything drawn comes from the growth model; the only decoration is the embers, which rise
 // from twigs whose request is recorded as working and from nowhere else.
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useReducedMotion } from 'motion/react'
 import { LocateFixedIcon, RotateCcwIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react'
 import { interpolate, useI18n } from '@/lib/i18n'
@@ -12,8 +12,7 @@ import { cn } from '@/lib/utils'
 import { STATE_LABEL } from '@/components/bits'
 import { Button } from '@/components/ui/button'
 import type { LiveState } from '@/data'
-import type { Grove } from '@/growth/growth-model'
-import { angleBetween, buildTree3, distanceToSegment, HOME_CAMERA, project, yawFacing, type Camera3, type Vec3 } from '@/growth/tree-3d'
+import { angleBetween, distanceToSegment, HOME_CAMERA, project, yawFacing, type Camera3, type Tree3, type Vec3 } from '@/growth/tree-3d'
 
 /** The colour token each request state draws in. A new state fails the typecheck here. */
 const STATE_TOKEN: Record<LiveState, string> = {
@@ -33,7 +32,10 @@ function readPalette(element: Element): Palette {
 }
 
 /** What the pointer can land on: a stretch of a branch or twig, in screen pixels, from the last frame drawn. */
-interface Hit { branchId: string; requestId: string | null; ax: number; ay: number; bx: number; by: number; reach: number }
+interface Hit { branchId: string; requestId: string | null; note: string | null; ax: number; ay: number; bx: number; by: number; reach: number }
+
+/** A button pinned to the tree: a branch on the whole tree, a request once you have climbed into a branch. */
+export interface TreeLabel { id: string; name: string; tag: string; alert: string | null }
 interface Ember { at: Vec3; age: number; drift: number }
 
 const OPENING_SECONDS = 1.8
@@ -45,8 +47,16 @@ const LABEL_WIDTH = 150
 const LABEL_HEIGHT = 30
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value))
 
-export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest }: {
-  grove: Grove
+export function Grove3D({ tree, labels: pinned, tooltips, describe, selectedId, spotlight, calm, onSelect, onOpenRequest }: {
+  tree: Tree3
+  /** One per pin on the tree, in the tree's order. */
+  labels: TreeLabel[]
+  /** What to say about a request when the pointer is over it. */
+  tooltips: ReadonlyMap<string, { title: string | null; state: LiveState }>
+  /** The drawing in a sentence, for people who cannot see it. */
+  describe: string
+  /** Calm keeps the tree from turning by itself and leaves out the embers. */
+  calm: boolean
   selectedId: string | null
   /** A branch or request another part of the page is pointing at (a table row, a list row); it lights up on the tree. */
   spotlight: { branchId: string | null; requestId: string | null }
@@ -55,9 +65,11 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
   onOpenRequest: (requestId: string) => void
 }) {
   const { t } = useI18n()
+  const askedOnce = t('asked once, not started')
+  const askedMany = t('asked {count} times, not started')
+  const budNote = useCallback((timesAsked: number) => timesAsked === 1 ? askedOnce : interpolate(askedMany, { count: timesAsked }), [askedOnce, askedMany])
   const still = useReducedMotion() ?? false
-  const tree = useMemo(() => buildTree3(grove), [grove])
-  const twigs = useMemo(() => new Map(grove.branches.flatMap((branch) => branch.twigs.map((twig) => [twig.requestId, twig] as const))), [grove])
+  const quiet = still || calm
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const tooltip = useRef<HTMLDivElement>(null)
@@ -124,7 +136,7 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
     let frame = 0
     let last = performance.now()
     state.bornAt = state.bornAt || last
-    const workingTips = tree.limbs.filter((limb) => limb.kind === 'twig' && limb.state === 'working').map((limb) => limb.points.at(-1)!)
+    const workingTips = tree.limbs.filter((limb) => limb.state === 'working').map((limb) => limb.points.at(-1)!)
     let emberDue = 0
 
     const draw = (now: number) => {
@@ -136,7 +148,7 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
       const { camera, goal } = state
 
       // Left alone, the tree turns slowly. Any touch, hover or selection stops it.
-      const idle = !still && !state.drag && !state.selectedId && !state.hoverBranch && !state.spotBranch && !state.spotRequest && now - state.touchedAt > 2500
+      const idle = !quiet && !state.drag && !state.selectedId && !state.hoverBranch && !state.spotBranch && !state.spotRequest && now - state.touchedAt > 2500
       if (idle) goal.yaw += dt * 0.07
       const ease = still ? 1 : Math.min(1, dt * 5)
       camera.yaw += (goal.yaw - camera.yaw) * ease
@@ -185,8 +197,8 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
         if (reveal <= 0) continue
         const pieces = limb.points.length - 1
         const lit = limb.branchId !== null && (limb.branchId === state.selectedId || limb.branchId === state.hoverBranch || limb.branchId === state.spotBranch)
-        const colour = limb.kind === 'twig' ? palette.state[limb.state!] : lit ? palette.accent : palette.wood
-        const strength = (limb.kind === 'twig' ? 1 : limb.kind === 'trunk' ? 0.8 : lit ? 1 : 0.62) * (dimmed(limb.branchId) ? 0.22 : 1)
+        const colour = limb.state ? palette.state[limb.state] : lit ? palette.accent : palette.wood
+        const strength = (limb.state ? 1 : limb.kind === 'trunk' ? 0.8 : limb.kind === 'root' ? 0.5 : lit ? 1 : 0.62) * (dimmed(limb.branchId) ? 0.22 : 1)
         for (let piece = 0; piece < pieces; piece += 1) {
           const part = clamp(reveal * pieces - piece, 0, 1)
           if (part <= 0) break
@@ -203,17 +215,17 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
             context.strokeStyle = tone(colour, strength * fog(depth))
             context.lineWidth = pixels
             context.lineCap = 'round'
-            context.setLineDash(limb.dashed ? (limb.kind === 'twig' ? [4, 5] : [2, 9]) : [])
+            context.setLineDash(limb.dashed ? (limb.kind === 'twig' || limb.kind === 'root' ? [4, 5] : [2, 9]) : [])
             context.beginPath()
             context.moveTo(a.x, a.y)
             context.lineTo(b.x, b.y)
             context.stroke()
           } })
-          if (limb.branchId !== null) hits.push({ branchId: limb.branchId, requestId: limb.requestId, ax: a.x, ay: a.y, bx: b.x, by: b.y, reach: Math.max(limb.kind === 'twig' ? 12 : 9, pixels) })
+          if (limb.branchId !== null) hits.push({ branchId: limb.branchId, requestId: limb.requestId, note: null, ax: a.x, ay: a.y, bx: b.x, by: b.y, reach: Math.max(limb.kind === 'twig' ? 12 : 9, pixels) })
         }
-        if (limb.kind === 'twig' && reveal === 1) {
+        if (limb.state && reveal === 1) {
           const tip = at(limb.points.at(-1)!)
-          const pulse = limb.state === 'working' && !still ? 0.55 + 0.45 * Math.sin(now / 260) : 1
+          const pulse = limb.state === 'working' && !quiet ? 0.55 + 0.45 * Math.sin(now / 260) : 1
           paint.push({ depth: tip.depth - 0.01, run: () => {
             context.setLineDash([])
             context.globalAlpha = pulse * (dimmed(limb.branchId) ? 0.22 : 1) * fog(tip.depth)
@@ -243,8 +255,26 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
         }
       }
 
+      // Buds: asks nobody has started, as open rings. They are told apart from leaves by being hollow.
+      if (leafShow > 0) {
+        for (const bud of tree.buds) {
+          const spot = at(bud.at)
+          const size = Math.max(3, 0.1 * spot.scale) * leafShow
+          paint.push({ depth: spot.depth, run: () => {
+            context.setLineDash([])
+            context.globalAlpha = (dimmed(bud.branchId) ? 0.2 : 0.95) * fog(spot.depth)
+            context.strokeStyle = palette.accent
+            context.lineWidth = 1.5
+            context.beginPath()
+            context.arc(spot.x, spot.y, size, 0, Math.PI * 2)
+            context.stroke()
+          } })
+          hits.push({ branchId: bud.branchId, requestId: null, note: `${bud.title} · ${budNote(bud.timesAsked)}`, ax: spot.x, ay: spot.y, bx: spot.x, by: spot.y, reach: Math.max(10, size + 4) })
+        }
+      }
+
       // Embers rise only from twigs whose request is recorded as working.
-      if (!still && grown === 1 && workingTips.length > 0) {
+      if (!quiet && grown === 1 && workingTips.length > 0) {
         emberDue -= dt
         if (emberDue <= 0) {
           emberDue = 0.28 / workingTips.length
@@ -302,7 +332,7 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
     }
     frame = requestAnimationFrame(draw)
     return () => { cancelAnimationFrame(frame); resized.disconnect(); themed.disconnect() }
-  }, [tree, still])
+  }, [tree, still, quiet, budNote])
 
   /** The branch or twig under a point, twigs first since they are the smaller target. */
   const hitAt = (x: number, y: number): Hit | null => {
@@ -311,7 +341,7 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
     for (const hit of live.current.hits) {
       const distance = distanceToSegment(x, y, hit.ax, hit.ay, hit.bx, hit.by)
       if (distance > hit.reach) continue
-      const score = distance - (hit.requestId ? 6 : 0)
+      const score = distance - (hit.requestId || hit.note ? 6 : 0)
       if (score < bestScore) { best = hit; bestScore = score }
     }
     return best
@@ -323,9 +353,10 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
   const showTooltip = (hit: Hit | null, x: number, y: number) => {
     const element = tooltip.current
     if (!element) return
-    const twig = hit?.requestId ? twigs.get(hit.requestId) : undefined
-    if (!twig) { element.style.opacity = '0'; return }
-    element.textContent = `${twig.title ?? t('New request')} · ${t(STATE_LABEL[twig.state])}`
+    const twig = hit?.requestId ? tooltips.get(hit.requestId) : undefined
+    const words = hit?.note ?? (twig ? `${twig.title ?? t('New request')} · ${t(STATE_LABEL[twig.state])}` : null)
+    if (!words) { element.style.opacity = '0'; return }
+    element.textContent = words
     element.style.transform = `translate(${x + 14}px, ${y + 14}px)`
     element.style.opacity = '1'
   }
@@ -339,7 +370,7 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
   }
 
   return (
-    <div ref={wrap} role="group" aria-label={interpolate(t('A tree with {count} branches, one per focus area. Drag to turn it. Each branch has a button on the tree.'), { count: grove.branches.length })}
+    <div ref={wrap} role="group" aria-label={describe}
       className="relative isolate h-[clamp(22rem,62vh,40rem)] overflow-hidden rounded-xl border bg-card/50">
       <canvas ref={canvas} aria-hidden="true" className="absolute inset-0 size-full cursor-grab touch-pan-y active:cursor-grabbing"
         onPointerDown={(event) => {
@@ -378,23 +409,23 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
           const { x, y } = local(event)
           const hit = hitAt(x, y)
           if (hit?.requestId) onOpenRequest(hit.requestId)
-          else onSelect(hit ? hit.branchId : null)
+          else if (!hit?.note) onSelect(hit ? hit.branchId : null)
         }}
         onPointerCancel={() => { live.current.drag = null }}
         onPointerLeave={(event) => { live.current.hoverBranch = null; live.current.hoverRequest = null; showTooltip(null, 0, 0); event.currentTarget.style.cursor = '' }}
       />
-      {grove.branches.map((branch, index) => (
-        <Button key={branch.id} variant="bare" aria-pressed={selectedId === branch.id} onClick={() => onSelect(selectedId === branch.id ? null : branch.id)}
-          ref={(element: HTMLButtonElement | null) => { if (element) labels.current.set(branch.id, element); else labels.current.delete(branch.id) }}
-          onPointerEnter={() => { live.current.hoverBranch = branch.id }} onPointerLeave={() => { live.current.hoverBranch = null }}
-          onFocus={() => { live.current.hoverBranch = branch.id }} onBlur={() => { live.current.hoverBranch = null }}
+      {pinned.map((label, index) => (
+        <Button key={label.id} variant="bare" aria-pressed={selectedId === label.id} onClick={() => onSelect(selectedId === label.id ? null : label.id)}
+          ref={(element: HTMLButtonElement | null) => { if (element) labels.current.set(label.id, element); else labels.current.delete(label.id) }}
+          onPointerEnter={() => { live.current.hoverBranch = label.id }} onPointerLeave={() => { live.current.hoverBranch = null }}
+          onFocus={() => { live.current.hoverBranch = label.id }} onBlur={() => { live.current.hoverBranch = null }}
           style={{ opacity: 0 }}
           className={cn('absolute top-0 left-0 flex items-baseline gap-1.5 rounded-md border bg-card/90 px-2 py-1 text-left font-normal whitespace-nowrap backdrop-blur-sm transition-colors will-change-transform',
-            selectedId === branch.id ? 'border-primary' : 'border-border/70 hover:border-accent-border')}>
+            selectedId === label.id ? 'border-primary' : 'border-border/70 hover:border-accent-border')}>
           <span className="font-mono text-[10px] tracking-wider text-muted-foreground">{String(index + 1).padStart(2, '0')}</span>
-          <span className="max-w-32 truncate text-xs font-medium">{branch.name}</span>
-          <span className="font-mono text-[10px] tabular-nums text-primary">LV {branch.level}</span>
-          {branch.needsYou > 0 && <span aria-label={interpolate(t(branch.needsYou === 1 ? '{count} needs you' : '{count} need you'), { count: branch.needsYou })} className="size-1.5 self-center rounded-full bg-attention-foreground" />}
+          <span className="max-w-32 truncate text-xs font-medium">{label.name}</span>
+          <span className="font-mono text-[10px] tabular-nums text-primary">{label.tag}</span>
+          {label.alert && <span aria-label={label.alert} className="size-1.5 self-center rounded-full bg-attention-foreground" />}
         </Button>
       ))}
       <div ref={tooltip} role="presentation" style={{ opacity: 0 }} className="pointer-events-none absolute top-0 left-0 z-[3000] max-w-64 rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-panel transition-opacity" />
@@ -403,7 +434,7 @@ export function Grove3D({ grove, selectedId, spotlight, onSelect, onOpenRequest 
         <Button variant="outline" size="icon-sm" aria-label={t('Turn right')} onClick={() => turn(0.6)}><RotateCwIcon /></Button>
         <Button variant="outline" size="icon-sm" aria-label={t('Zoom in')} onClick={() => zoom(1.25)}><ZoomInIcon /></Button>
         <Button variant="outline" size="icon-sm" aria-label={t('Zoom out')} onClick={() => zoom(0.8)}><ZoomOutIcon /></Button>
-        <Button variant="outline" size="icon-sm" aria-label={t('Back to the whole tree')} onClick={home}><LocateFixedIcon /></Button>
+        <Button variant="outline" size="icon-sm" aria-label={t('Reset the view')} onClick={home}><LocateFixedIcon /></Button>
       </div>
       <p className="pointer-events-none absolute top-3 left-3 hidden text-[11px] text-muted-foreground md:block">{t('Drag to turn · pick a branch · pick a twig to open its request')}</p>
     </div>

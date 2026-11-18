@@ -7,7 +7,7 @@ import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Sprite } from '@/companion/companion'
-import { COMPANION_FRAMES } from '@/companion/companion-sprites'
+import { SPECIES_FRAMES } from '@/companion/companion-sprites'
 import {
   BENCHMARK_COLUMN_LABEL, BENCHMARK_COLUMN_MEANING, BENCHMARK_COLUMNS, benchmarks, readSnapshots, snapshotOf, sortBenchmarks, withSnapshot,
   type Benchmark, type BenchmarkColumn, type GroveSnapshot,
@@ -145,7 +145,7 @@ export function TuneUp({ steps, onGo }: { steps: TuneUpStep[]; onGo: (target: Tu
   if (steps.length === 0 || !step) {
     return (
       <section aria-label={t('Tune-up')} className="flex flex-wrap items-center gap-4 rounded-xl border bg-card/70 p-4 md:p-5">
-        <Sprite frame={COMPANION_FRAMES.celebrating[0]} palette={companion.palette} className="size-14 shrink-0" />
+        <Sprite frame={SPECIES_FRAMES[companion.species].celebrating[0]} palette={companion.palette} className="size-14 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="section-label">{t('Tune-up')}</p>
           <p className="mt-1 font-medium">{steps.length === 0 ? t('Nothing is waiting on you.') : t('That was the last step.')}</p>
@@ -179,7 +179,7 @@ export function TuneUp({ steps, onGo }: { steps: TuneUpStep[]; onGo: (target: Tu
         </ol>
       </div>
       <motion.div key={step.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} className="flex flex-wrap items-start gap-4 rounded-lg border border-border/70 bg-card p-4">
-        <Sprite frame={COMPANION_FRAMES[step.kind === 'answer' || step.kind === 'check' ? 'needs-you' : 'working'][0]} palette={companion.palette} className="size-14 shrink-0" />
+        <Sprite frame={SPECIES_FRAMES[companion.species][step.kind === 'answer' || step.kind === 'check' || step.kind === 'reminder' ? 'needs-you' : 'working'][0]} palette={companion.palette} className="size-14 shrink-0" />
         <div className="min-w-0 flex-1 space-y-1">
           <p className="flex flex-wrap items-baseline gap-2">
             <span className="font-mono text-[11px] tracking-wider text-muted-foreground">{String(index + 1).padStart(2, '0')} / {String(remaining.length).padStart(2, '0')}</span>
@@ -190,7 +190,7 @@ export function TuneUp({ steps, onGo }: { steps: TuneUpStep[]; onGo: (target: Tu
           <p className="text-sm text-muted-foreground">{t(TUNE_UP_REASON[step.kind])}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => onGo(step.target)}>{t(step.target.kind === 'request' ? 'Open the request' : step.target.page === 'rules' ? 'Open My Rules' : step.target.page === 'suggested' ? 'Open Suggested' : 'Open My Work')}<ArrowRightIcon /></Button>
+          <Button size="sm" onClick={() => onGo(step.target)}>{t(step.target.kind === 'request' ? 'Open the request' : step.target.kind === 'branch' ? 'Open its branch' : step.target.page === 'rules' ? 'Open My Rules' : step.target.page === 'suggested' ? 'Open Suggested' : 'Open My Work')}<ArrowRightIcon /></Button>
           <Button size="sm" variant="ghost" onClick={() => setSkipped(new Set([...skipped, step.id]))}>{t('Skip for now')}</Button>
         </div>
       </motion.div>
