@@ -1,7 +1,7 @@
 // The Grove: My Work as a tree you can climb into. The trunk is you, each branch is a focus area, each twig is a
 // request and each leaf is a piece of work product. Branches thicken and level up from recorded evidence only
 // (growth/growth-model.ts); the sheet under the tree shows exactly where a branch's level came from.
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { motion } from 'motion/react'
 import { ArrowRightIcon, InfoIcon } from 'lucide-react'
 import { interpolate, useI18n } from '@/lib/i18n'
@@ -198,11 +198,12 @@ export function Grove({ onOpenRequest, onOpenFocus }: { onOpenRequest: (request:
   const companion = useStore((state) => state.view.companion)
   const setCompanion = useStore.use.setCompanion()
   const grove = useMemo(() => toGrove(focusAreas, requests, otherAsks.length, NEXT_STEP_NOT_RECORDED, t('Other')), [focusAreas, requests, otherAsks, t])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selectedId = useStore((state) => state.view.groveBranch)
+  const setSelectedId = useStore.use.openGroveBranch()
   const selected = grove.branches.find((branch) => branch.id === selectedId) ?? null
   const groveView = useStore((state) => state.view.groveView)
   const setGroveView = useStore.use.setGroveView()
-  const select = (id: string) => setSelectedId((current) => current === id ? null : id)
+  const select = (id: string) => setSelectedId(selectedId === id ? null : id)
   const openById = (requestId: string) => { const request = requests.find((entry) => entry.id === requestId); if (request) onOpenRequest(request) }
   const hidden = grove.branches.reduce((sum, branch) => sum + Math.max(0, branch.twigs.length - TWIGS_SHOWN), 0)
 

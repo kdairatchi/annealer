@@ -98,6 +98,8 @@ export interface ViewState {
   sort: WorkSort
   /** Display density only; changing it never requests image generation. */
   focusArtwork: FocusArtwork
+  /** The branch open in the Grove: a focus area id, or the Other id. Null shows the whole tree. */
+  groveBranch: string | null
   companion: CompanionPreferences
   /** How the Grove is drawn. */
   groveView: GroveView
@@ -126,6 +128,8 @@ export interface ViewSlice {
   setFocusArtwork: (focusArtwork: FocusArtwork) => void
   setCompanion: (change: Partial<CompanionPreferences>) => void
   setGroveView: (groveView: GroveView) => void
+  /** Opens a branch of the Grove, or the whole tree with null, and records it in the URL so Back returns. */
+  openGroveBranch: (branchId: string | null) => void
 }
 
 // ---------- Rules: the receipts and Undo for My Rules saves ----------

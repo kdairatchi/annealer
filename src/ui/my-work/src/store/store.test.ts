@@ -390,6 +390,23 @@ describe('the Grove and the companion', () => {
     assert.equal(new URL(urls.at(-1)!.href).searchParams.get('view'), 'grove')
   })
 
+  it('keeps the open branch in the URL, so Back closes it and a link opens it', () => {
+    const { store, urls } = testStore({ href: 'http://localhost/?view=grove&branch=area-viewer' })
+    assert.equal(store.getState().view.groveBranch, 'area-viewer')
+    store.getState().openGroveBranch('area-search')
+    assert.deepEqual([new URL(urls.at(-1)!.href).searchParams.get('branch'), urls.at(-1)!.replace], ['area-search', false])
+    store.getState().openGroveBranch(null)
+    assert.equal(new URL(urls.at(-1)!.href).searchParams.has('branch'), false)
+    store.getState().openGroveBranch('area-search')
+    store.getState().goToPage('work')
+    assert.equal(store.getState().view.groveBranch, null)
+    assert.equal(new URL(urls.at(-1)!.href).searchParams.has('branch'), false)
+  })
+
+  it('a branch in the URL is ignored outside the Grove', () => {
+    assert.equal(testStore({ href: 'http://localhost/?branch=area-viewer' }).store.getState().view.groveBranch, null)
+  })
+
   it('counts the Grove as My Work, so moving between them reports nothing new', () => {
     const { store, usage } = testStore()
     store.getState().goToPage('grove')
