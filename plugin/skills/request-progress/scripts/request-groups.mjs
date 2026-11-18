@@ -1373,6 +1373,8 @@ var init_SettingsDefaultsManager = __esm({
         // Model for every My Work refresh step on the selected API provider; empty keeps the provider's configured model
         CLAUDE_MEM_CORPUS_AGENT: "",
         // Which agent answers knowledge-corpus prime/query/reprime: '' uses the Claude Agent SDK (the Claude subscription); 'api' answers over chat completions on the selected openrouter/openai-compatible provider and spends that provider's credit
+        CLAUDE_MEM_API_AGENT_EXTRA_BODY: "",
+        // JSON object merged into every api agent request (My Work refresh, corpus), e.g. {"chat_template_kwargs":{"enable_thinking":false}} for vLLM (#6223). Parsed like CLAUDE_MEM_OPENROUTER_EXTRA_BODY; never sets reasoning or response_format. File/env only
         CLAUDE_MEM_WORK_VIEW_TEXT_LANGUAGE: "",
         // Language for My Work's generated text (titles, reviews, story), such as 'Turkish'. No extra model call; empty uses the language the grouping step finds in the owner's asks, decided once per run (#5660)
         // Automatic local DB snapshots (BackupManager). Off by default; opt-in.
