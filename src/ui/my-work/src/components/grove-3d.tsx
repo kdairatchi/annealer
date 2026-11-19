@@ -4,7 +4,7 @@
 // There is no 3D library here on purpose: the tree is a few hundred line segments, and the projection is a dozen lines
 // in growth/tree-3d.ts. Everything drawn comes from the growth model; the only decoration is the embers, which rise
 // from twigs whose request is recorded as working and from nowhere else.
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useReducedMotion } from 'motion/react'
 import { LocateFixedIcon, RotateCcwIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react'
 import { interpolate, useI18n } from '@/lib/i18n'
@@ -47,7 +47,11 @@ const LABEL_WIDTH = 150
 const LABEL_HEIGHT = 30
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value))
 
-export function Grove3D({ tree, labels: pinned, tooltips, describe, selectedId, spotlight, calm, onSelect, onOpenRequest }: {
+/** Something that stands on the tree: a creature at its post. `node` is what is drawn; the tree only places it. */
+export interface TreeDweller { id: string; at: Vec3; node: ReactNode; label: string; /** It has work in hand, so it moves. */ busy: boolean; onPick: () => void }
+const NO_DWELLERS: readonly TreeDweller[] = []
+
+export function Grove3D({ tree, labels: pinned, tooltips, describe, selectedId, spotlight, calm, dwellers = NO_DWELLERS, onSelect, onOpenRequest }: {
   tree: Tree3
   /** One per pin on the tree, in the tree's order. */
   labels: TreeLabel[]
@@ -57,6 +61,8 @@ export function Grove3D({ tree, labels: pinned, tooltips, describe, selectedId, 
   describe: string
   /** Calm keeps the tree from turning by itself and leaves out the embers. */
   calm: boolean
+  /** The creatures on the tree. They ride along as it turns, like the labels. */
+  dwellers?: readonly TreeDweller[]
   selectedId: string | null
   /** A branch or request another part of the page is pointing at (a table row, a list row); it lights up on the tree. */
   spotlight: { branchId: string | null; requestId: string | null }
@@ -74,6 +80,9 @@ export function Grove3D({ tree, labels: pinned, tooltips, describe, selectedId, 
   const canvas = useRef<HTMLCanvasElement>(null)
   const tooltip = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<string, HTMLElement>())
+  const dwellerEls = useRef(new Map<string, HTMLElement>())
+  const dwellersNow = useRef(dwellers)
+  useEffect(() => { dwellersNow.current = dwellers }, [dwellers])
   // Everything the frame loop reads lives in one ref, so a new selection or hover never restarts the loop.
   const live = useRef({
     camera: { ...HOME_CAMERA, target: { ...HOME_CAMERA.target } } as Camera3,
@@ -329,6 +338,17 @@ export function Grove3D({ tree, labels: pinned, tooltips, describe, selectedId, 
         label.style.zIndex = String(Math.round(2000 - spot.depth * 20))
       }
       context.globalAlpha = 1
+
+      // Creatures stand at their posts. One with work in hand bobs; with motion off, or set to calm, none do.
+      dwellersNow.current.forEach((dweller, index) => {
+        const element = dwellerEls.current.get(dweller.id)
+        if (!element) return
+        const spot = at(dweller.at)
+        const bob = dweller.busy && !quiet ? Math.sin(now / 260 + index * 1.7) * 2.5 : 0
+        element.style.transform = `translate(${spot.x.toFixed(1)}px, ${(spot.y + bob).toFixed(1)}px) translate(-50%, -100%)`
+        element.style.opacity = (grown < 0.9 ? 0 : fog(spot.depth)).toFixed(2)
+        element.style.zIndex = String(Math.round(2100 - spot.depth * 20))
+      })
     }
     frame = requestAnimationFrame(draw)
     return () => { cancelAnimationFrame(frame); resized.disconnect(); themed.disconnect() }
@@ -426,6 +446,13 @@ export function Grove3D({ tree, labels: pinned, tooltips, describe, selectedId, 
           <span className="max-w-32 truncate text-xs font-medium">{label.name}</span>
           <span className="font-mono text-[10px] tabular-nums text-primary">{label.tag}</span>
           {label.alert && <span aria-label={label.alert} className="size-1.5 self-center rounded-full bg-attention-foreground" />}
+        </Button>
+      ))}
+      {dwellers.map((dweller) => (
+        <Button key={dweller.id} variant="bare" aria-label={dweller.label} title={dweller.label} onClick={dweller.onPick} style={{ opacity: 0 }}
+          ref={(element: HTMLButtonElement | null) => { if (element) dwellerEls.current.set(dweller.id, element); else dwellerEls.current.delete(dweller.id) }}
+          className="absolute top-0 left-0 rounded-md p-0.5 transition-[filter] will-change-transform hover:brightness-125 focus-visible:ring-2 focus-visible:ring-ring">
+          {dweller.node}
         </Button>
       ))}
       <div ref={tooltip} role="presentation" style={{ opacity: 0 }} className="pointer-events-none absolute top-0 left-0 z-[3000] max-w-64 rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-panel transition-opacity" />

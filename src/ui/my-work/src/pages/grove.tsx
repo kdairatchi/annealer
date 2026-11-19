@@ -1,18 +1,22 @@
 // The Grove: My Work as a tree you can climb into. The trunk is you, each branch is a focus area, each twig is a
 // request and each leaf is a piece of work product. Branches thicken and level up from recorded evidence only
 // (growth/growth-model.ts); the sheet under the tree shows exactly where a branch's level came from.
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { ArrowLeftIcon, ArrowRightIcon, InfoIcon, PaletteIcon, TreesIcon } from 'lucide-react'
 import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { StateBadge } from '@/components/bits'
-import { Grove3D, type TreeLabel } from '@/components/grove-3d'
+import { Grove3D, type TreeDweller, type TreeLabel } from '@/components/grove-3d'
 import { CompanionsPanel } from '@/components/grove-companions'
 import { ContextPanel } from '@/components/grove-context'
 import { Benchmarks, TuneUp } from '@/components/grove-panels'
 import { Trail } from '@/components/grove-trail'
-import { useCompanionSource } from '@/companion/use-companions'
+import { Sprite } from '@/companion/companion'
+import { COMPANION_SPECIES, COMPANION_SPECIES_LABEL, SPECIES_FRAMES, speciesUnlocked, type CompanionSpecies } from '@/companion/companion-sprites'
+import { useCompanions, useCompanionSource } from '@/companion/use-companions'
+import { creatureCard } from '@/growth/companions'
+import { creaturePosts, POST_LABEL } from '@/growth/creature-posts'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -271,6 +275,9 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
   const selected = grove.branches.find((branch) => branch.id === selectedId) ?? null
 
   const trailHandle = useTrail(source)
+  const { state: companions } = useCompanions(source)
+  const [creature, setCreature] = useState<CompanionSpecies | null>(null)
+  const companionsPanel = useRef<HTMLDivElement>(null)
   const trail = trailHandle.notes
   const day = today()
 
@@ -293,6 +300,27 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
   const rulesOn = rules.filter((rule) => rule.status === 'on').length
   const rulesWaiting = rules.filter((rule) => rule.status === 'suggested').length
   const tree = useMemo(() => climbed && selected ? buildBranchTree3(selected) : buildTree3(grove, { on: rulesOn, waiting: rulesWaiting }), [climbed, selected, grove, rulesOn, rulesWaiting])
+  // The fixtures' tree is small, so they show every creature as it looks once unlocked.
+  const creatureLevel = sample ? Number.POSITIVE_INFINITY : grove.level
+  // Every unlocked creature stands on the tree. Picking one opens it in the Companions panel.
+  const dwellers = useMemo<TreeDweller[]>(() => climbed ? [] : creaturePosts(tree, COMPANION_SPECIES.filter((species) => speciesUnlocked(species, creatureLevel))).map(({ species, at }) => {
+    const card = creatureCard(companions, species)
+    const failing = card.failing.length > 0
+    const busy = card.jobs > 0 || card.thinking > 0
+    const name = card.name || t(COMPANION_SPECIES_LABEL[species])
+    const doing = failing ? t('a job is failing') : card.thinking > 0 ? t('thinking') : card.waiting > 0 ? interpolate(t(card.waiting === 1 ? '{count} lead to decide' : '{count} leads to decide'), { count: card.waiting }) : busy ? t('at work') : t('resting')
+    return {
+      id: species, at, busy, label: `${name}, ${t(POST_LABEL[species])}: ${doing}`,
+      onPick: () => { setPanel('companions'); setCreature(species); window.setTimeout(() => companionsPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60) },
+      node: (
+        <span className="relative block">
+          <Sprite frame={SPECIES_FRAMES[species][failing ? 'concerned' : busy ? 'working' : 'resting'][0]} palette={companion.palette} className="size-7 drop-shadow-[0_1px_2px_rgb(0_0_0/0.6)]" />
+          {(card.waiting > 0 || failing) && <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 size-2 rounded-full border border-card bg-attention-foreground" />}
+          {card.thinking > 0 && <span aria-hidden="true" className="absolute -top-0.5 -left-0.5 size-2 animate-pulse rounded-full border border-card bg-working-foreground" />}
+        </span>
+      ),
+    }
+  }), [climbed, tree, creatureLevel, companions, companion.palette, t])
   const labels = useMemo<TreeLabel[]>(() => climbed && selected
     ? selected.twigs.slice(0, BRANCH_LIMBS_SHOWN).map((twig) => ({ id: twig.requestId, name: twig.title ?? t('New request'), tag: twig.percent === null ? '–' : `${twig.percent}%`, alert: twig.state === 'your-move' || twig.state === 'needs-check' ? t('Needs you') : null }))
     : grove.branches.map((branch) => ({ id: branch.id, name: branch.name, tag: `LV ${branch.level}`, alert: branch.needsYou > 0 ? interpolate(t(branch.needsYou === 1 ? '{count} needs you' : '{count} need you'), { count: branch.needsYou }) : null })),
@@ -332,7 +360,7 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
           {groveView === '3d' ? (
             <div className="relative">
               {/* A new key replays the grow-in, so climbing into a branch reads as a new tree, not a jump cut. */}
-              <Grove3D key={climbed ? `branch:${selected!.id}` : 'tree'} tree={tree} labels={labels} tooltips={tooltips} calm={calm}
+              <Grove3D key={climbed ? `branch:${selected!.id}` : 'tree'} tree={tree} labels={labels} tooltips={tooltips} calm={calm} dwellers={climbed ? undefined : dwellers}
                 describe={climbed
                   ? interpolate(t('The branch {name} drawn as its own tree: {count} requests as limbs. Drag to turn it. Each request has a button on the tree.'), { name: selected!.name, count: labels.length })
                   : interpolate(t('A tree with {count} branches, one per focus area. Drag to turn it. Each branch has a button on the tree.'), { count: grove.branches.length })}
@@ -368,8 +396,7 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
           </div>
           {panel === 'tune-up' && <TuneUp steps={steps} onGo={go} />}
           {panel === 'benchmarks' && <Benchmarks grove={grove} sample={sample} onOpenBranch={openBranch} onSpotlight={(branchId) => setSpotlight({ branchId, requestId: null })} />}
-          {/* The fixtures' tree is small, so they show every creature as it looks once unlocked. */}
-          {panel === 'companions' && <CompanionsPanel source={source} palette={companion.palette} groveLevel={sample ? Number.POSITIVE_INFINITY : grove.level} branches={grove.branches.map((branch) => ({ id: branch.id, name: branch.name }))} />}
+          {panel === 'companions' && <div ref={companionsPanel}><CompanionsPanel source={source} palette={companion.palette} picked={creature} onPick={setCreature} groveLevel={creatureLevel} branches={grove.branches.map((branch) => ({ id: branch.id, name: branch.name }))} /></div>}
           {panel === 'context' && source && <ContextPanel source={source} requests={requests} onOpenRequest={onOpenRequest} />}
           {panel === 'branch' && (selected
             ? <BranchSheet branch={selected} requests={requests} onOpenRequest={onOpenRequest} onOpenFocus={onOpenFocus} onSpotlight={(requestId) => setSpotlight({ branchId: null, requestId })}
