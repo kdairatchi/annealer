@@ -8,11 +8,11 @@ export const GROVE_VIEW_LABEL: Record<GroveView, string> = { '3d': '3D', flat: '
 export const isGroveView = (value: unknown): value is GroveView => GROVE_VIEWS.includes(value as GroveView)
 
 /** What the panel under the tree shows. One definition: the switch and the page both read this list. */
-export const GROVE_PANELS = ['branch', 'tune-up', 'benchmarks', 'context'] as const
+export const GROVE_PANELS = ['branch', 'tune-up', 'companions', 'benchmarks', 'context'] as const
 export type GrovePanel = (typeof GROVE_PANELS)[number]
 
 /** The panel switch's words. A new panel fails the typecheck until it has a name here. */
-export const GROVE_PANEL_LABEL: Record<GrovePanel, string> = { branch: 'Branch', 'tune-up': 'Tune-up', benchmarks: 'Benchmarks', context: 'Context' }
+export const GROVE_PANEL_LABEL: Record<GrovePanel, string> = { branch: 'Branch', 'tune-up': 'Tune-up', companions: 'Companions', benchmarks: 'Benchmarks', context: 'Context' }
 
 /** How much the Grove moves on its own. Calm keeps the tree still and the air clear; dragging still works. */
 export const GROVE_MOTIONS = ['full', 'calm'] as const
