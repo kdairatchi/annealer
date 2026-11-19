@@ -49,13 +49,14 @@ Checked against the source on 2026-11-18.
 | 3. Context receipts | Not started. Changes the worker; needs a run on real data |
 | 4. Sessions on the tree | Not started. Changes the worker; needs a run on real data |
 | 5. Themes and customization | Built: accent colours, motion setting, three companion creatures unlocked by level |
-| 6. Quests | Partly built: the trail (notes, links, reminders) in the browser. Scheduled runs need the worker |
+| 6. Quests | Partly built: the trail (notes, links, reminders) in the browser. Scheduling is designed as a CronLord integration in [companions.md](companions.md) |
 | 7. Take the wheel | Not started. Changes the worker; needs a run on real data |
 | 8. Reviewer on security work | Answered from the source: a setting already exists (see step 8) |
 | 9. Proof | Partly built: benchmark table and daily snapshots. The rest needs the worker |
 
-Everything built so far has been run only on the sample fixtures in headless Chromium. Before anything else, run it
-against a real `~/.claude-mem` database, on a phone, and in Safari and Firefox.
+The Grove, the tune-up and the companion ran against a real database on 2026-11-19 (level 6, seven branches). One
+fault showed: upstream's top bar covers the page title and the Customize button. Still not run: a phone, Safari and
+Firefox, and the Context panel on real receipts.
 
 ## Build order
 
@@ -160,15 +161,16 @@ Built, in the browser only:
 - `Add the trail: notes, links and reminders on a branch` (a due reminder is the first step of the tune-up; only
   http and https links are kept; it can remind you only while the page is open)
 
-Left, all in the worker:
+Left:
+
+The worker does not get a scheduler of its own. Scheduled work runs on CronLord, and each job belongs to a
+companion. The design, the data model and the build order are in [companions.md](companions.md). Its first
+phase covers what was listed here:
 
 - `Move the trail into the worker, so it follows you across browsers`
-- `Add a quest record and its states`
-- `Nudge: list open requests with no recorded next step every morning`
-- `Loop: re-check a request until its next step is recorded`
-- `Show quests on the companion and in the Grove`
-- `Research trail: keep the one-liners and links you save, under their branch`
-- `Send a quest's report through the existing Telegram alerts`
+- `Connect the worker to CronLord: list, assign and read runs`
+- `Give a companion its jobs, and show their last run on it`
+- `Turn a run's output into leads you can keep or dismiss`
 
 ### 7. Take the wheel
 
