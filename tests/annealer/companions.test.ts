@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import {
   cleanHost, cleanParam, cleanScopePattern, DAILY_LOSS_CAP, hostInScope, isAnnealerJobId, jobFailing, jobIdFor, LEADS_PER_RUN, levelFor, parseLeads, pointsOf,
 } from '../../src/shared/annealer/companions.js';
-import { AssignRefused, CompanionService } from '../../src/services/annealer/companions.js';
+import { ASK_GIVEN_UP_MS, AssignRefused, CLAUDE_COMMAND, CompanionService } from '../../src/services/annealer/companions.js';
 import { CronLordClient, LOG_READ_MAX_BYTES, readCronLordConfig } from '../../src/services/annealer/cronlord.js';
 import { parseRitual, RITUAL_FILES, rituals } from '../../src/services/annealer/rituals.js';
 import { AnnealerStore, TRAIL_KEPT } from '../../src/services/annealer/store.js';
@@ -97,7 +97,7 @@ describe('a creature\'s points', () => {
 
 describe('rituals', () => {
   it('loads every shipped ritual, each owned by a creature and with a parameter', () => {
-    expect([...rituals().keys()].sort()).toEqual(['endpoint-watch', 'subdomain-watch']);
+    expect([...rituals().keys()].sort()).toEqual(['challenge', 'endpoint-watch', 'hypotheses', 'report-draft', 'script-endpoints', 'subdomain-watch']);
     expect(rituals().size).toBe(RITUAL_FILES.length);
     expect(rituals().get('endpoint-watch')!.ritual).toMatchObject({ owner: 'bolt', reach: 'touch', lead: 'change' });
     expect(rituals().get('subdomain-watch')!.ritual).toMatchObject({ owner: 'moth', reach: 'read', lead: 'asset' });
@@ -105,9 +105,18 @@ describe('rituals', () => {
 
   it('never builds a command from a parameter: every one is read from the environment', () => {
     for (const { ritual, job } of rituals().values()) {
-      for (const param of ritual.params) expect(job.command).toContain(`"$${param.name}"`);
+      if (job.runner !== 'shell') continue;
+      for (const param of ritual.params) {
+        expect(job.command).toContain(`"$${param.name}"`);
+        expect(param.type).not.toBe('text');
+      }
       expect(job.command).not.toMatch(/eval|dangerously|\bclaude\b/);
     }
+    // The one command that does call Claude takes every tool away and quotes everything it was handed.
+    expect(CLAUDE_COMMAND).toContain('--tools ""');
+    expect(CLAUDE_COMMAND).toContain('--strict-mcp-config');
+    expect(CLAUDE_COMMAND).not.toMatch(/dangerously|bypassPermissions|eval/);
+    for (const name of ['ANNEALER_PROMPT', 'ANNEALER_SOUL', 'ANNEALER_MODEL']) expect(CLAUDE_COMMAND).toContain(`"$${name}"`);
   });
 
   it('refuses a file with no annealer table, a model job, or a parameter it would not check', () => {
@@ -118,6 +127,14 @@ describe('rituals', () => {
     expect(parseRitual(base('[[annealer.params]]\nname = "TARGET"\ntype = "anything"'))).toBeNull();
     expect(parseRitual(base('[[annealer.params]]\nname = "ANNEALER_JOB"\ntype = "domain"'))).toBeNull();
     expect(parseRitual(base(''))).toBeNull();
+    // Free text is for a model to read. A shell ritual may not ask for any.
+    expect(parseRitual(base('[[annealer.params]]\nname = "NOTES"\ntype = "text"'))).toBeNull();
+    // A model ritual says what it reads and how it answers, and is written as a Claude job.
+    const model = (extra: string, kind = 'claude') => `[annealer]\nowner = "cinder"\nreach = "read"\nlead = "hypothesis"\nrunner = "model"\n${extra}\n[[annealer.params]]\nname = "NOTES"\ntype = "text"\n[[jobs]]\nid = "x"\ncommand = "think"\nkind = "${kind}"`;
+    expect(parseRitual(model('answer = "list"'))?.job).toMatchObject({ runner: 'model', task: 'think', answer: 'list' });
+    expect(parseRitual(model('answer = "list"', 'shell'))).toBeNull();
+    expect(parseRitual(model('answer = "essay"'))).toBeNull();
+    expect(parseRitual(model('answer = "list"\nreads = "everything"'))).toBeNull();
     expect(parseRitual('not toml [')).toBeNull();
   });
 });
@@ -189,7 +206,7 @@ describe('the store', () => {
 });
 
 /** A CronLord that exists only in this test: it records what it was asked and answers from `runs` and `logs`. */
-function fakeCronLord(options: { token?: string; down?: () => boolean } = {}) {
+function fakeCronLord(options: { token?: string; down?: () => boolean; localModelUrl?: string } = {}) {
   const calls: { method: string; path: string; body: Record<string, unknown> | null; auth: string | null }[] = [];
   const jobs = new Map<string, Record<string, unknown>>();
   const runs = new Map<string, { id: string; job_id: string; status: string; started_at: number; finished_at: number | null }[]>();
@@ -212,7 +229,7 @@ function fakeCronLord(options: { token?: string; down?: () => boolean } = {}) {
     if (job && method === 'POST') return Response.json({ id: 'r', status: 'queued' }, { status: 202 });
     return Response.json({ error: 'not found' }, { status: 404 });
   };
-  return { calls, jobs, runs, logs, client: new CronLordClient({ url: 'http://cronlord.test:7070', token: options.token ?? null }, fetchImpl) };
+  return { calls, jobs, runs, logs, client: new CronLordClient({ url: 'http://cronlord.test:7070', token: options.token ?? null, localModelUrl: options.localModelUrl ?? null }, fetchImpl) };
 }
 
 describe('giving a creature a job', () => {
@@ -255,7 +272,7 @@ describe('giving a creature a job', () => {
 
   it('does not remember a job CronLord would not take', async () => {
     const { store, service } = setup({ token: 'right' });
-    const wrong = new CompanionService(store, () => new CronLordClient({ url: 'http://cronlord.test:7070', token: 'wrong' }, fakeCronLord({ token: 'right' }).client['fetchImpl']), () => new Date(NOW));
+    const wrong = new CompanionService(store, () => new CronLordClient({ url: 'http://cronlord.test:7070', token: 'wrong', localModelUrl: null }, fakeCronLord({ token: 'right' }).client['fetchImpl']), () => new Date(NOW));
     await expect(wrong.assign({ species: 'moth', ritual: 'subdomain-watch', params: { TARGET: 'example.com' }, schedule: 'daily', branchId: null })).rejects.toThrow('401');
     expect(store.jobs()).toEqual([]);
     expect((await service.state()).cronlord.state).toBe('connected');
@@ -336,7 +353,7 @@ describe('reading runs back', () => {
     expect(await fakeCronLord().client.status()).toMatchObject({ state: 'connected', open: true, version: '0.3.6' });
     expect(await fakeCronLord({ token: 'secret' }).client.status()).toMatchObject({ state: 'connected', open: false });
     const wrong = fakeCronLord({ token: 'secret' });
-    expect(await new CronLordClient({ url: 'http://cronlord.test:7070', token: 'nope' }, wrong.client['fetchImpl']).status()).toMatchObject({ state: 'refused' });
+    expect(await new CronLordClient({ url: 'http://cronlord.test:7070', token: 'nope', localModelUrl: null }, wrong.client['fetchImpl']).status()).toMatchObject({ state: 'refused' });
   });
 });
 
@@ -345,7 +362,9 @@ describe('where CronLord is', () => {
     const dir = mkdtempSync(join(tmpdir(), 'annealer-cronlord-'));
     try {
       expect(readCronLordConfig(dir, {})).toBeNull();
-      expect(readCronLordConfig(dir, { ANNEALER_CRONLORD_URL: 'http://127.0.0.1:7070/jobs', ANNEALER_CRONLORD_TOKEN: ' t ' })).toEqual({ url: 'http://127.0.0.1:7070', token: 't' });
+      expect(readCronLordConfig(dir, { ANNEALER_CRONLORD_URL: 'http://127.0.0.1:7070/jobs', ANNEALER_CRONLORD_TOKEN: ' t ' })).toEqual({ url: 'http://127.0.0.1:7070', token: 't', localModelUrl: null });
+      expect(readCronLordConfig(dir, { ANNEALER_CRONLORD_URL: 'http://127.0.0.1:7070', ANNEALER_LOCAL_MODEL_URL: 'http://127.0.0.1:1234/v1/' })?.localModelUrl).toBe('http://127.0.0.1:1234/v1');
+      expect(readCronLordConfig(dir, { ANNEALER_CRONLORD_URL: 'http://127.0.0.1:7070', ANNEALER_LOCAL_MODEL_URL: 'http://user:pw@127.0.0.1:1234/v1' })?.localModelUrl).toBeNull();
       expect(readCronLordConfig(dir, { ANNEALER_CRONLORD_URL: 'file:///etc/passwd' })).toBeNull();
       mkdirSync(join(dir, 'annealer'));
       const file = join(dir, 'annealer', 'cronlord.json');
@@ -353,7 +372,7 @@ describe('where CronLord is', () => {
       chmodSync(file, 0o644);
       expect(readCronLordConfig(dir, {})).toBeNull();
       chmodSync(file, 0o600);
-      expect(readCronLordConfig(dir, {})).toEqual({ url: 'https://cron.example.net', token: 'secret' });
+      expect(readCronLordConfig(dir, {})).toEqual({ url: 'https://cron.example.net', token: 'secret', localModelUrl: null });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

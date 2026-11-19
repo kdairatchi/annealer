@@ -4,7 +4,7 @@ import express, { Request, Response } from 'express';
 import { BaseRouteHandler } from '../BaseRouteHandler.js';
 import { isForeignBrowserRead } from './SettingsRoutes.js';
 import { readReceipts } from '../../../../shared/annealer/context-receipts.js';
-import { cleanScopePattern, isAnnealerJobId, isCompanionSpecies, isLeadStatus, isSchedule } from '../../../../shared/annealer/companions.js';
+import { cleanHost, cleanScopePattern, isAnnealerJobId, isCompanionSpecies, isLeadStatus, isSchedule, LEAD_NEXT } from '../../../../shared/annealer/companions.js';
 import { resolveDataDir } from '../../../../shared/data-dir.js';
 import { AssignRefused, CompanionService } from '../../../annealer/companions.js';
 import { CronLordError } from '../../../annealer/cronlord.js';
@@ -63,6 +63,10 @@ export class AnnealerRoutes extends BaseRouteHandler {
     app.post('/api/annealer/jobs', this.handleAssign.bind(this));
     app.post('/api/annealer/jobs/:id/run', this.handleRunNow.bind(this));
     app.delete('/api/annealer/jobs/:id', this.handleRemoveJob.bind(this));
+    app.post('/api/annealer/asks', this.handleAsk.bind(this));
+    app.post('/api/annealer/souls/:species', this.handleSaveSoul.bind(this));
+    app.post('/api/annealer/opinions', this.handleAddOpinion.bind(this));
+    app.delete('/api/annealer/opinions/:id', this.handleRemoveOpinion.bind(this));
     app.post('/api/annealer/leads/:id', this.handleDecideLead.bind(this));
     app.post('/api/annealer/scope', this.handleAddScope.bind(this));
     app.delete('/api/annealer/scope/:id', this.handleRemoveScope.bind(this));
@@ -129,11 +133,50 @@ export class AnnealerRoutes extends BaseRouteHandler {
 
   private handleDecideLead = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
     const status = (req.body as { status?: unknown } | undefined)?.status;
-    if (!isLeadStatus(status)) { res.status(400).json({ error: 'Refused', message: 'A lead is new, kept or dismissed.' }); return; }
+    if (!isLeadStatus(status)) { res.status(400).json({ error: 'Refused', message: 'That is not something a lead can be.' }); return; }
     const { store } = this.annealer;
-    const lead = store.decideLead(String(req.params.id), status, new Date().toISOString());
+    const current = store.lead(String(req.params.id));
+    if (!current) { res.status(404).json({ error: 'Not found' }); return; }
+    // A lead moves one step at a time: it cannot be accepted by a program before it was confirmed and reported.
+    if (current.status !== status && !LEAD_NEXT[current.status].includes(status)) { res.status(400).json({ error: 'Refused', message: 'A lead cannot go straight from where it is to that.' }); return; }
+    const lead = store.decideLead(current.id, status, new Date().toISOString());
     if (!lead) { res.status(404).json({ error: 'Not found' }); return; }
     res.json({ lead, ledger: store.ledger() });
+  });
+
+  private handleAsk = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const params = body.params !== null && typeof body.params === 'object' && !Array.isArray(body.params) ? body.params as Record<string, unknown> : {};
+    if (!isCompanionSpecies(body.species) || typeof body.ritual !== 'string') { res.status(400).json({ error: 'Refused', message: 'A question needs a creature and a ritual.' }); return; }
+    const { species, ritual } = body;
+    const leadId = typeof body.leadId === 'string' && /^\d{1,12}$/.test(body.leadId) ? body.leadId : null;
+    await this.answering(res, async () => {
+      res.status(202).json({ ask: await this.annealer.companions.ask({ species, ritual, params, leadId }) });
+    });
+  });
+
+  private handleSaveSoul = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
+    const species = req.params.species;
+    if (!isCompanionSpecies(species)) { res.status(404).json({ error: 'Not found' }); return; }
+    const { store } = this.annealer;
+    res.json({ soul: store.saveSoul(species, req.body, new Date().toISOString()), souls: store.souls() });
+  });
+
+  private handleAddOpinion = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const target = typeof body.target === 'string' && body.target.trim() ? cleanHost(body.target) : '';
+    if (!isCompanionSpecies(body.species) || target === null) { res.status(400).json({ error: 'Refused', message: 'An opinion needs a creature, and its target is a plain domain or nothing.' }); return; }
+    const { store } = this.annealer;
+    const opinion = store.addOpinion(body.species, target, body.text, typeof body.leadId === 'string' ? body.leadId : null, new Date().toISOString());
+    if (!opinion) { res.status(400).json({ error: 'Refused', message: 'Write the opinion in a sentence. If the list is full, delete one first.' }); return; }
+    res.status(201).json({ opinions: store.opinions() });
+  });
+
+  private handleRemoveOpinion = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
+    const id = Number(req.params.id);
+    const { store } = this.annealer;
+    if (Number.isInteger(id)) store.removeOpinion(id);
+    res.json({ opinions: store.opinions() });
   });
 
   private handleAddScope = this.wrapHandler(async (req: Request, res: Response): Promise<void> => {
