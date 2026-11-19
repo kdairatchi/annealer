@@ -1,7 +1,7 @@
 # Annealer companions
 
-Design for turning the corner pet into a team of working creatures. Nothing here is built yet.
-The build order is at the end; the first phase fits a weekend and spends nothing on inference.
+Design for turning the corner pet into a team of working creatures. Phase 1 is built: see
+"Phase 1 as built" near the end. The rest is design. No phase so far spends anything on inference.
 
 Read with [the build plan](build-plan.md). Its ground rules still hold: add on, never replace;
 nothing invented; one definition per state; stay mergeable; leave capture alone.
@@ -23,7 +23,8 @@ nothing invented; one definition per state; stay mergeable; leave capture alone.
 
 ## What I read in CronLord before designing against it
 
-Checked in `kdairatchi/CronLord` at `d1e7268` and `kdairatchi/CronLord-Grimoire`. Read, not run.
+Checked in `kdairatchi/CronLord` at `d1e7268` and `kdairatchi/CronLord-Grimoire`, then run against the
+0.3.6 release binary on a throwaway data folder.
 
 | Assumed | What the source says | Consequence |
 | --- | --- | --- |
@@ -42,12 +43,17 @@ Annealer will hand CronLord shell commands, so its front door matters more than 
 1. **Any web page can create a job.** With no `admin_token`, `POST /api/jobs` is open, and the
    body is parsed as JSON whatever its content type, so a page you visit can send it as a plain
    form-style request with no preflight. A shell job that fires within a minute is code execution.
+   Read in the source; not tried.
 2. **The HTML form routes have the same hole even with a token.** `POST /jobs` checks a session
    only when GitHub login is configured. With `admin_token` alone it accepts anyone, and there is
-   no CSRF token or Origin check.
+   no CSRF token or Origin check. Confirmed on a local copy started with a token: a form post with
+   no credentials created a job.
 3. **Grimoire's Claude rituals run with `--dangerously-skip-permissions`.** Point one at a
    finding, a JS bundle or a scraped page and whatever that text says runs with your shell.
 4. **Job `env` is stored in plain text**, as the docs already say. No keys go there.
+5. **The 0.3.6 release binary does not start outside its build container.** It looks for its
+   migrations in `/src/db/migrations`, the path it was compiled at. The Docker image has that
+   folder; the tarball from the release page does not.
 
 Suggested fixes: refuse writes without a token or session, require `application/json` on
 `/api/*`, check `Origin` and `Host` on every write, and bind to loopback or a tailnet address.
@@ -64,7 +70,7 @@ kind of work you actually do.
 | 1 | **Cinder** | Ember with two eyes, flickering crown (exists) | Hypothesis smith | Start |
 | 2 | **Sprout** | Seedling, two leaves (exists) | Keeper | Grove level 2 |
 | 3 | **Bolt** | Boxy machine, antenna (exists) | Watcher | Grove level 4 |
-| 4 | **Moth** | Grey wings, two feathered antennae, pale eye-spots | Scout | First focus area with a named target |
+| 4 | **Moth** | Two antennae, wide-set eyes, a wing at each side | Scout | Grove level 3 for now; a named target once targets exist |
 | 5 | **Weevil** | Round beetle, long snout, six one-pixel legs | Code reader | First JS bundle or repo fed to any creature |
 | 6 | **Rime** | Ice shard with a single slit eye, frost pixels shed below | Skeptic | First shipped request |
 | 7 | **Whorl** | Snail, shell drawn as three stacked rings | Archivist | 25 recorded sessions |
@@ -217,10 +223,13 @@ Annealer adds four fields of its own, kept in `annealer.db` because CronLord has
    go in `env`. Nothing you or a model typed is ever spliced into a shell command.
 4. `POST /api/jobs` with `id = annealer-<creature>-<slug>`, `category = "annealer"`,
    `retry_count = 0`, a `timeout_sec`, and `enabled = true`.
-5. The worker polls `GET /api/runs?job_id=` for jobs it owns, remembers the last run it saw, and
-   for each new finished run reads up to 16 KB of the log.
-6. Lines of the form `ANNEALER-LEAD {json}` become leads. Everything else is the output preview.
-   A run with no lead line updates status and writes nothing, so "no change" stays quiet.
+5. When you press "Check for new runs", the worker reads `GET /api/runs?job_id=` for each job it
+   owns, remembers the last run it read, and for each new finished run reads up to 16 KB of the log.
+   There is no timer in the worker.
+6. A stdout line of the form `ANNEALER-LEAD <kind> <text>` becomes a lead. The kind is one of a
+   fixed list and the text is kept as plain text, cut at 300 characters. A shell script can print
+   that safely; it could not build JSON safely from a hostname it was handed. A run with no lead
+   line updates status and writes nothing, so "no change" stays quiet.
 
 The worker holds the CronLord URL and token in a settings file readable only by you. The page
 talks to the worker, never to CronLord, and cannot change the URL.
@@ -440,13 +449,63 @@ the browser is an explicit button, not something that runs at startup.
 
 | Phase | What ships | Inference |
 | --- | --- | --- |
-| **1. A weekend** | `annealer.db`; trail notes in the worker; CronLord client (settings file, list, assign, poll, read log); a jobs panel on the creature; Bolt and Moth assignable with `http-uptime-check` and `subdomain-monitor`; leads you can keep or dismiss; the XP ledger; `concerned` mood | None |
+| **1. Built** | `annealer.db`; trail notes in the worker; CronLord client; a Companions panel in the Grove; Moth and Bolt with one ritual each; a scope list; leads you can keep or dismiss; the XP ledger; the `concerned` mood | None |
 | 2. Souls | `composeSoul`, overrides, engine setting, local-model rituals for Weevil and Cinder, memory view, opinions you confirm | Local only |
 | 3. Outcomes | Confirm, ship and program outcomes on leads; predictions; XP loss; Rime and `finding-validator`; Quill and `report-draft`; paid opt-in and budgets | Paid, opt-in |
 | 4. The world | Roster of three, posts on the tree, parcels, weather, the remaining moods, evolution sprites | None |
 | 5. Reach | The skill for session crons and cloud routines, export and import, tempering, spar and trial | Mixed |
 
-Before phase 1: close the two CronLord write holes above.
+Before giving CronLord real jobs: close the two write holes above.
+
+## Phase 1 as built
+
+**Set-up.** Tell the worker where CronLord is, in a file only you can read, then reload My Work:
+
+```bash
+mkdir -p ~/.claude-mem/annealer && umask 077 && \
+printf '{"url":"http://127.0.0.1:7070","token":"%s"}\n' "$CRONLORD_ADMIN_TOKEN" > ~/.claude-mem/annealer/cronlord.json
+```
+
+`ANNEALER_CRONLORD_URL` and `ANNEALER_CRONLORD_TOKEN` in the worker's environment do the same and
+win over the file. A token file that other users on the machine can read is ignored. Use https or a
+tailnet address when CronLord is on another machine: over plain http the token crosses the network
+in the clear.
+
+**What is there.**
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Definitions | `src/shared/annealer/companions.ts` | Species, lead kinds and statuses, run states, schedules, scope matching, points. Imported by the worker and the page, so each list exists once |
+| Database | `src/services/annealer/store.ts` | `companion_job`, `lead`, `xp_event`, `scope`, `trail_note`. Created on first use, owner-only |
+| CronLord client | `src/services/annealer/cronlord.ts` | Five-second limit on every call, no redirects followed, 16 KB of any log |
+| Rituals | `src/services/annealer/rituals.ts` | `subdomain-watch` (Moth, public sources) and `endpoint-watch` (Bolt, sends requests). Shell only |
+| Routes | `AnnealerRoutes.ts` | Under `/api/annealer`. Refused for any page but the worker's own on loopback |
+| Panel | Grove → Companions | Creatures, give a job, jobs with their last five runs, leads, scope |
+| Trail | Grove → Branch | Kept by the worker on the local page. A button moves notes a browser had been keeping |
+
+**Smaller than the design, on purpose.**
+
+- A creature is its species. The `companion` table, names per creature and a roster of three come
+  with souls in phase 2. The corner companion is still the one you picked.
+- Two rituals, both shell. The design's tables for opinions and predictions are not created yet,
+  because nothing would read them.
+- Schedules are four fixed choices. Nothing typed on the page becomes a cron line.
+- A lead is worth +5 kept and −2 as noise, and either can be undone. The larger outcomes
+  (confirmed, shipped, accepted) arrive with phase 3.
+- Scope is a list you keep by hand. It is checked when a job is given, not on every run.
+
+**Checked.** Unit tests for parsing, scope, points, the store, the client and the routes. One run
+of the whole path against the real CronLord 0.3.6 with a stand-in `subfinder`: give the job, run
+it, read the baseline, change the hosts, read two leads, keep one, find it on the branch's trail,
+remove the job. The same path driven through the page in headless Chromium against the built
+worker. A hostname containing markup or shell syntax stayed text at every step.
+
+**Not checked.** A real `subfinder`, a real target, CronLord on another machine, and a real
+`~/.claude-mem` database with this build.
+
+**Known limit.** `endpoint-watch` fetches whatever a scoped name resolves to. A name in scope that
+resolves to a private address makes the CronLord host request it. Only the status code, a hash and
+a size come back, never the body.
 
 Every phase keeps the existing checks: pure functions under `node --test`, the root typecheck,
 the bundle build, and a test that a CronLord outage cannot cause a later, unrequested paid run.

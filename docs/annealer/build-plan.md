@@ -49,14 +49,14 @@ Checked against the source on 2026-11-18.
 | 3. Context receipts | Partly built: receipts are written, listed and shown. Pin, mute and "was it used" are open |
 | 4. Sessions on the tree | Not started. Changes the worker; needs a run on real data |
 | 5. Themes and customization | Built: accent colours, motion setting, three companion creatures unlocked by level |
-| 6. Quests | Partly built: the trail (notes, links, reminders) in the browser. Scheduling is designed as a CronLord integration in [companions.md](companions.md) |
+| 6. Quests | Built as companions, phase 1: the trail kept by the worker, jobs run by CronLord, leads and a creature's level. See [companions.md](companions.md) |
 | 7. Take the wheel | Not started. Changes the worker; needs a run on real data |
 | 8. Reviewer on security work | Answered from the source: a setting already exists (see step 8) |
 | 9. Proof | Partly built: benchmark table and daily snapshots. The rest needs the worker |
 
-The Grove, the tune-up and the companion ran against a real database on 2026-11-19 (level 6, seven branches). One
-fault showed: upstream's top bar covers the page title and the Customize button. Still not run: a phone, Safari and
-Firefox, and the Context panel on real receipts.
+The Grove, the tune-up and the companion ran against a real database on 2026-11-19 (level 6, seven branches).
+Still not run: a phone, Safari and Firefox, the Context panel on real receipts, and companions on a real CronLord
+with real tools.
 
 ## Build order
 
@@ -175,21 +175,22 @@ Left:
 A quest is a saved instruction the worker runs on a schedule and reports on in My Work. It reads saved records.
 It must not start paid inference by itself: a quest that needs an agent turn waits for you to press the button.
 
-Built, in the browser only:
-
-- `Add the trail: notes, links and reminders on a branch` (a due reminder is the first step of the tune-up; only
-  http and https links are kept; it can remind you only while the page is open)
-
-Left:
-
 The worker does not get a scheduler of its own. Scheduled work runs on CronLord, and each job belongs to a
-companion. The design, the data model and the build order are in [companions.md](companions.md). Its first
-phase covers what was listed here:
+companion. The design, the data model, what phase 1 built and what it left out are in
+[companions.md](companions.md).
 
-- `Move the trail into the worker, so it follows you across browsers`
-- `Connect the worker to CronLord: list, assign and read runs`
-- `Give a companion its jobs, and show their last run on it`
-- `Turn a run's output into leads you can keep or dismiss`
+Built:
+
+- `Add the trail: notes, links and reminders on a branch`
+- `Say what a companion is, once, for the worker and the page`
+- `Keep Annealer's own database beside claude-mem's`
+- `Hand a ritual to CronLord and read its runs back`
+- `Add the companion, scope and trail routes`
+- `Add Moth, and a mood for a job that keeps failing`
+- `Add the Companions panel to the Grove`
+- `Keep the trail in the worker, and move a browser's notes there on request`
+
+Left: companions.md phases 2 to 5.
 
 ### 7. Take the wheel
 
