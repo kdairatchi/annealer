@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { addNote, branchTrail, dueNotes, readTrail, removeNote, toggleNote, TRAIL_KEPT, TRAIL_TEXT_MAX, trailLink, type TrailNote } from './trail.ts'
+import { addNote, branchTrail, dueNotes, readTrail, removeNote, toggleNote, TRAIL_KEPT, TRAIL_TEXT_MAX, trailFromWorker, trailLink, type TrailNote } from './trail.ts'
 
 const note = (id: string, change: Partial<TrailNote> = {}): TrailNote => ({ id, branchId: 'a', text: id, link: null, remindOn: null, done: false, createdAt: `2026-11-${id.padStart(2, '0')}`, ...change })
 
@@ -52,4 +52,12 @@ test('a due reminder is the first step of the tune-up and points at its branch',
   const { tuneUp } = await import('./tune-up.ts')
   const steps = tuneUp([], [], [], 'Next step not recorded', [note('9', { text: 'retest the open redirect', branchId: 'b', remindOn: '2026-11-18' })])
   assert.deepEqual(steps, [{ id: 'reminder:9', kind: 'reminder', subject: 'retest the open redirect', gain: null, target: { kind: 'branch', branchId: 'b' } }])
+})
+
+test('the worker\'s notes are cleaned like the browser\'s, and none are cut', () => {
+  const many = Array.from({ length: 450 }, (_, index) => ({ id: `n${index}`, branchId: 'b', text: `note ${index}`, link: 'javascript:alert(1)', done: false, createdAt: '' }))
+  const read = trailFromWorker([...many, { id: '', branchId: 'b', text: 'no id' }, null, 'x'])
+  assert.equal(read.length, 450)
+  assert.equal(read[0].link, null)
+  assert.deepEqual(trailFromWorker({ notes: 'no' }), [])
 })

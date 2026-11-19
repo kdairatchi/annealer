@@ -43,6 +43,9 @@ function clean(value: unknown): TrailNote | null {
   }
 }
 
+/** The worker's notes, read back as carefully as the browser's. The worker sets its own limit, so none are cut here. */
+export const trailFromWorker = (list: unknown): TrailNote[] => (Array.isArray(list) ? list.map(clean).filter((note): note is TrailNote => note !== null) : [])
+
 /** Saved notes read back safely: anything unreadable is dropped. */
 export function readTrail(saved: string | null): TrailNote[] {
   try {

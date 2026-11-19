@@ -8,16 +8,19 @@ import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { StateBadge } from '@/components/bits'
 import { Grove3D, type TreeLabel } from '@/components/grove-3d'
+import { CompanionsPanel } from '@/components/grove-companions'
 import { ContextPanel } from '@/components/grove-context'
 import { Benchmarks, TuneUp } from '@/components/grove-panels'
 import { Trail } from '@/components/grove-trail'
+import { useCompanionSource } from '@/companion/use-companions'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import type { LiveState, Request } from '@/data'
 import { ACCENT_LABEL, ACCENT_TONES, ACCENTS, GROVE_MOTION_LABEL, GROVE_MOTIONS, GROVE_PANEL_LABEL, GROVE_PANELS, GROVE_VIEW_LABEL, GROVE_VIEWS, type GrovePanel } from '@/growth/grove-view'
-import { addNote, dueNotes, readTrail, removeNote, toggleNote, type TrailNote } from '@/growth/trail'
+import { dueNotes } from '@/growth/trail'
+import { useTrail } from '@/growth/use-trail'
 import { BRANCH_LIMBS_SHOWN, buildBranchTree3, buildTree3 } from '@/growth/tree-3d'
 import { tuneUp, type TuneUpTarget } from '@/growth/tune-up'
 import { GROWTH_POINTS, toGrove, type Grove as GroveModel, type GrowthBranch } from '@/growth/growth-model'
@@ -211,9 +214,6 @@ function Tree({ grove, selectedId, onSelect }: { grove: GroveModel; selectedId: 
   )
 }
 
-const TRAIL_KEY = 'annealer:grove:trail'
-/** An id for a new note. `crypto.randomUUID` only exists on https and localhost, and the worker can be opened by LAN address. */
-const newNoteId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 const today = () => new Date().toLocaleDateString('en-CA')
 
 /** Colour, motion and how the tree is drawn, in one place. Every choice is saved in this browser. */
@@ -264,16 +264,14 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
   const groveView = useStore((state) => state.view.groveView)
   const calm = useStore((state) => state.view.groveMotion) === 'calm'
   const selectedId = useStore((state) => state.view.groveBranch)
-  const sourceKind = useStore((state) => state.work.sourceKind)
+  const source = useCompanionSource()
   const { setCompanion, openGroveBranch: setSelectedId } = useStore.getState()
-  const sample = new URLSearchParams(window.location.search).get('source') === 'sample'
+  const sample = source === 'sample'
   const grove = useMemo(() => toGrove(focusAreas, requests, otherAsks, NEXT_STEP_NOT_RECORDED, t('Other')), [focusAreas, requests, otherAsks, t])
   const selected = grove.branches.find((branch) => branch.id === selectedId) ?? null
 
-  // The trail lives in this browser. Sample data gets its own, so trying the fixtures never touches real notes.
-  const trailKey = sample ? `${TRAIL_KEY}:sample` : TRAIL_KEY
-  const [trail, setTrail] = useState<TrailNote[]>(() => { try { return readTrail(localStorage.getItem(trailKey)) } catch { return [] } })
-  const saveTrail = (next: TrailNote[]) => { setTrail(next); try { localStorage.setItem(trailKey, JSON.stringify(next)) } catch { /* Storage is blocked: the trail lasts for this visit. */ } }
+  const trailHandle = useTrail(source)
+  const trail = trailHandle.notes
   const day = today()
 
   const steps = useMemo(() => tuneUp(requests, rules, focusAreas, NEXT_STEP_NOT_RECORDED, dueNotes(trail, day)), [requests, rules, focusAreas, trail, day])
@@ -370,15 +368,15 @@ export function Grove({ onOpenRequest, onOpenFocus, onOpenPage }: { onOpenReques
           </div>
           {panel === 'tune-up' && <TuneUp steps={steps} onGo={go} />}
           {panel === 'benchmarks' && <Benchmarks grove={grove} sample={sample} onOpenBranch={openBranch} onSpotlight={(branchId) => setSpotlight({ branchId, requestId: null })} />}
-          {panel === 'context' && <ContextPanel source={sample ? 'sample' : sourceKind === 'cloud' ? 'cloud' : 'local'} requests={requests} onOpenRequest={onOpenRequest} />}
+          {/* The fixtures' tree is small, so they show every creature as it looks once unlocked. */}
+          {panel === 'companions' && <CompanionsPanel source={source} palette={companion.palette} groveLevel={sample ? Number.POSITIVE_INFINITY : grove.level} branches={grove.branches.map((branch) => ({ id: branch.id, name: branch.name }))} />}
+          {panel === 'context' && source && <ContextPanel source={source} requests={requests} onOpenRequest={onOpenRequest} />}
           {panel === 'branch' && (selected
             ? <BranchSheet branch={selected} requests={requests} onOpenRequest={onOpenRequest} onOpenFocus={onOpenFocus} onSpotlight={(requestId) => setSpotlight({ branchId: null, requestId })}
                 climb={groveView === '3d' && selected.twigs.length > 0
                   ? <Button size="sm" onClick={() => setClimbedId(climbed ? null : selected.id)}><TreesIcon />{t(climbed ? 'Back to the whole tree' : 'Climb into this branch')}</Button>
                   : null}
-                trail={<Trail branchId={selected.id} notes={trail} today={day}
-                  onAdd={(note) => saveTrail(addNote(trail, { ...note, id: newNoteId(), createdAt: new Date().toISOString() }))}
-                  onToggle={(id) => saveTrail(toggleNote(trail, id))} onRemove={(id) => saveTrail(removeNote(trail, id))} />} />
+                trail={<Trail branchId={selected.id} trail={trailHandle} today={day} kept={source === 'local' ? 'worker' : 'browser'} />} />
             : <p className="rounded-xl border border-dashed bg-card/40 px-4 py-3 text-sm text-muted-foreground">{t('Pick a branch on the tree to open it.')}</p>)}
         </>
       )}
