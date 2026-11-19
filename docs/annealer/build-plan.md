@@ -49,7 +49,7 @@ Checked against the source on 2026-11-18.
 | 3. Context receipts | Partly built: receipts are written, listed and shown. Pin, mute and "was it used" are open |
 | 4. Sessions on the tree | Not started. Changes the worker; needs a run on real data |
 | 5. Themes and customization | Built: accent colours, motion setting, three companion creatures unlocked by level |
-| 6. Quests | Built as companions, phase 1: the trail kept by the worker, jobs run by CronLord, leads and a creature's level. See [companions.md](companions.md) |
+| 6. Quests | Built as companions: jobs run by CronLord, souls, questions to a local model or Claude, lead outcomes, creatures on the tree. What is left is listed in [companions.md](companions.md) |
 | 7. Take the wheel | Not started. Changes the worker; needs a run on real data |
 | 8. Reviewer on security work | Answered from the source: a setting already exists (see step 8) |
 | 9. Proof | Partly built: benchmark table and daily snapshots. The rest needs the worker |
@@ -190,7 +190,13 @@ Built:
 - `Add the Companions panel to the Grove`
 - `Keep the trail in the worker, and move a browser's notes there on request`
 
-Left: companions.md phases 2 to 5.
+- `Give each creature a soul, a model and a memory`
+- `Ask a creature one question through CronLord, once`
+- `Record how far a lead got, and share a reported lead with the creatures that fed it`
+- `Add Weevil, Rime and Quill`
+- `Put the creatures on the tree`
+
+Left: in companions.md, the unbuilt parts of phases 3 to 5 and the three creatures still only in the catalog.
 
 ### 7. Take the wheel
 

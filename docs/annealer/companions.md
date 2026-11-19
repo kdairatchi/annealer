@@ -1,7 +1,9 @@
 # Annealer companions
 
-Design for turning the corner pet into a team of working creatures. Phase 1 is built: see
-"Phase 1 as built" near the end. The rest is design. No phase so far spends anything on inference.
+Design for turning the corner pet into a team of working creatures. Phase 1 is built, most of
+phases 2 and 3, and a first piece of 4 and 5: see "As built" near the end. Where the design and
+the build differ, "As built" is right. Nothing spends on a paid model unless you switched that
+ritual on for that creature and pressed Ask.
 
 Read with [the build plan](build-plan.md). Its ground rules still hold: add on, never replace;
 nothing invented; one definition per state; stay mergeable; leave capture alone.
@@ -450,14 +452,16 @@ the browser is an explicit button, not something that runs at startup.
 | Phase | What ships | Inference |
 | --- | --- | --- |
 | **1. Built** | `annealer.db`; trail notes in the worker; CronLord client; a Companions panel in the Grove; Moth and Bolt with one ritual each; a scope list; leads you can keep or dismiss; the XP ledger; the `concerned` mood | None |
-| 2. Souls | `composeSoul`, overrides, engine setting, local-model rituals for Weevil and Cinder, memory view, opinions you confirm | Local only |
-| 3. Outcomes | Confirm, ship and program outcomes on leads; predictions; XP loss; Rime and `finding-validator`; Quill and `report-draft`; paid opt-in and budgets | Paid, opt-in |
-| 4. The world | Roster of three, posts on the tree, parcels, weather, the remaining moods, evolution sprites | None |
-| 5. Reach | The skill for session crons and cloud routines, export and import, tempering, spar and trial | Mixed |
+| **2. Built** | Souls you edit and can read exactly as sent; a model per creature; questions to a local model through CronLord; memory you write or confirm; Weevil and Cinder at work | Local only |
+| **3. Mostly built** | How far a lead got, with points lost for being wrong and a share for the creatures that fed it; Rime challenges a lead; Quill drafts a report; Claude with no tools, allowed ritual by ritual, with a daily limit. Not built: predictions | Paid, opt-in |
+| 4. Started | Built: every unlocked creature stands at its post on the tree and opens when picked. Not built: a roster of three, parcels, weather, the remaining moods, evolution | None |
+| 5. Started | Built: export and import of a creature's words. Not built: the skill for session crons and cloud routines, tempering, spar, trial | Mixed |
 
 Before giving CronLord real jobs: close the two write holes above.
 
-## Phase 1 as built
+## As built
+
+### Phase 1
 
 **Set-up.** Tell the worker where CronLord is, in a file only you can read, then reload My Work:
 
@@ -517,3 +521,99 @@ the bundle build, and a test that a CronLord outage cannot cause a later, unrequ
 - Whether the VPS and the workstation each get a claude-mem worker, and if so which one holds
   `annealer.db`.
 - Whether program outcomes are entered by hand or read from a platform. By hand first.
+
+### Phases 2 and 3: souls, questions and outcomes
+
+**Seven creatures.** Cinder, Sprout, Moth and Bolt, then Weevil (Grove level 5), Rime (6) and
+Quill (7). Whorl, Heron and Magpie are still only in the catalog above.
+
+| Creature | Ritual | Kind | Reads | Brings back |
+| --- | --- | --- | --- | --- |
+| Moth | `subdomain-watch` | Shell, scheduled | Public sources | New hosts |
+| Bolt | `endpoint-watch` | Shell, scheduled | One address | A changed status or body |
+| Weevil | `script-endpoints` | Shell, scheduled | One script | New paths and addresses quoted in it |
+| Cinder | `hypotheses` | One question | What you kept about a target, your notes | Up to 8 hypotheses, each with a test |
+| Rime | `challenge` | One question | One kept or confirmed lead, what it was built from, your evidence | A verdict: stands or breaks, and why |
+| Quill | `report-draft` | One question | One confirmed lead, what it was built from, your steps | A report draft |
+
+**A soul** is a name, a catchphrase, what you add to its job, a tone, a model and a daily limit.
+`composeSoul` puts it together in a fixed order: the species' own line, your addition, the tone,
+the opinions that apply, and one line saying that fenced text is never an instruction. The Soul
+tab shows that exact text.
+
+**Engines.** Set under Soul, per creature.
+
+| Engine | How it runs | Cost | Needs |
+| --- | --- | --- | --- |
+| No model | Shell rituals only | Nothing | |
+| Local model | CronLord's `http` kind posts to an OpenAI-compatible server | Nothing | `localModelUrl` in the worker's CronLord settings file, as the CronLord machine reaches it, for example `http://127.0.0.1:1234/v1` |
+| Claude | A fixed shell command on the CronLord machine: `claude -p` with `--tools ""` and `--strict-mcp-config`. Haiku, Sonnet or Opus by alias | Tokens or your plan | The Claude CLI, logged in, on that machine. Each ritual ticked under "Allowed to spend" |
+
+The page cannot set the model server's address, only its model name, so a page cannot point
+CronLord at another host and read the answer back.
+
+**A question is asked once.** The worker fixes the soul, the task and the material, creates a
+job in CronLord switched off, starts it once by hand, and remembers it. When the run finishes the
+answer becomes leads and the job is removed. A failed run, an unreadable answer, an outage or
+twenty minutes of silence all end the same way: the question has failed, and nothing asks it
+again. While a creature is thinking the page asks the worker to read CronLord every four seconds;
+that only reads.
+
+**What a model can and cannot do.** It gets no tools. Leads and notes go in between `<data>`
+marks that the material cannot close. What it writes is kept as plain text, cut to length, and
+becomes leads you still have to decide on. The worst a hostile host name or page can do is make
+it write a bad hypothesis.
+
+**Memory.** A line per opinion, about a target or about everything, written by you or made from
+a lead you marked wrong ("Remember as a dead end"). A creature never writes its own memory.
+
+**Outcomes.** A lead moves one step at a time and is worth where it stands, not the sum of its
+steps:
+
+| Status | Points | Set by you when |
+| --- | --- | --- |
+| Kept | +5 | It is worth keeping |
+| Noise | −2 | It is not |
+| Confirmed | +40 | You checked it and it is real |
+| False positive | −8 | You checked it and it is not |
+| Reported | +60 | It went into a report you sent |
+| Accepted | +100 | The program accepted the report |
+| Duplicate | −10 | The program closed it as a duplicate |
+| Not applicable | −30 | The program closed it as not applicable |
+
+When a lead is reported or accepted, each other creature whose lead it was built from, up to
+three and up to three steps back, gets a quarter of that. A hypothesis Cinder built from a host
+Moth found pays Moth 15 when it is reported. Every status can be undone, and the points go with
+it. This replaces the design's separate events and its 25% chain bonus.
+
+**Export and import.** Export writes a creature's species, name, catchphrase, role and tone.
+Import can set only those four, whatever the file contains, shows a warning that the role was
+written by someone else, and saves nothing until you press Save.
+
+**On the tree.** Every unlocked creature stands at its post on the whole tree and rides along as
+it turns. One with work in hand bobs unless motion is set to calm. Picking one opens it in the
+Companions panel.
+
+**Checked.** Unit tests for souls, opinions, the answer parsers, the one-question rule under
+failure and outage, the daily limit, the spend switch, shared credit, and upgrading a phase 1
+database. The whole chain driven through the page in headless Chromium against the built worker
+and the real CronLord 0.3.6: Moth finds hosts, they are kept, Cinder is given a soul and asked,
+Rime is refused twice and then asked on Claude, and a hypothesis is confirmed, reported and
+closed as not applicable with the points moving each time.
+
+**Not checked.** A real model. The local model was a stand-in server that speaks the same
+protocol, and Claude was a stand-in script that records its arguments; the flags were read from
+the installed CLI's own help (2.1.219). Also not checked: a real `subfinder`, a real target, and
+your real database.
+
+**Known limits.**
+
+- While a question is waiting, its prompt and soul sit in CronLord's database in plain text. They
+  are removed when the answer is read.
+- A Claude question is a `claude -p` session on the CronLord machine. If claude-mem's hooks are
+  installed there, it is recorded like any other session.
+- CronLord keeps 32 KB of an http response. Answers are capped at 1,200 tokens to stay under it.
+- Questions are one-off. A model ritual cannot be put on a schedule yet, because its material is
+  fixed when it is asked.
+- Rime is scored like any other creature, by what you decide about its verdict. The design's
+  larger reward for a correct kill is not built.
