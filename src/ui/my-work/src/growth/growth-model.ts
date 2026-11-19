@@ -4,6 +4,7 @@
 // prompts sent and tool calls earn nothing. Pure, so `node --test` can load it.
 import { needsYou, OTHER_FOCUS_AREA_ID, type FocusArea, type FocusAsk, type LiveState, type Request } from '../data.ts'
 import { focusOverview } from '../live/focus-overview.ts'
+import { levelFloor, levelFor } from '../../../../shared/annealer/companions.ts'
 
 /** What each kind of recorded evidence is worth. One table, so the Grove can show the same numbers it adds up. */
 export const GROWTH_POINTS = {
@@ -19,8 +20,6 @@ export const GROWTH_POINTS = {
   checked: 6,
 } as const
 
-/** Growth a level costs more of as it goes: level 2 at 50, 3 at 150, 4 at 300, 5 at 500… */
-const LEVEL_STEP = 50
 
 export interface GrowthSource { label: 'Shipped' | 'Reviewed progress' | 'Work product' | 'Checked by you'; points: number; count: number }
 
@@ -73,16 +72,8 @@ export interface Grove {
   sorting: number
 }
 
-/** Points at which `level` starts. Level 1 starts at 0. */
-export const levelFloor = (level: number) => (LEVEL_STEP * level * (level - 1)) / 2
-
-export function levelFor(points: number): { level: number; intoLevel: number; toNextLevel: number } {
-  let level = 1
-  while (levelFloor(level + 1) <= points) level += 1
-  const floor = levelFloor(level)
-  const span = levelFloor(level + 1) - floor
-  return { level, intoLevel: (points - floor) / span, toNextLevel: floor + span - points }
-}
+// The level curve lives with the companions' definitions, so a creature's level and the Grove's are the same sum.
+export { levelFloor, levelFor }
 
 function twigOf(request: Request, nextStepMissingText: string): { twig: GrowthTwig; sources: Record<GrowthSource['label'], number> } {
   const shipped = request.state === 'shipped'
