@@ -48,3 +48,8 @@ export function contrast(a: string, b: string): number {
   const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
   return (high + 0.05) / (low + 0.05)
 }
+
+/** What is open for the creature picked in the Companions panel. */
+export const CREATURE_TABS = ['work', 'soul', 'memory'] as const
+export type CreatureTab = (typeof CREATURE_TABS)[number]
+export const CREATURE_TAB_LABEL: Record<CreatureTab, string> = { work: 'Work', soul: 'Soul', memory: 'Memory' }

@@ -1,8 +1,8 @@
 // The Grove's Companions panel: the creatures that can be given a job, the jobs CronLord runs for them, and the leads
 // those runs printed. A creature levels up only from what you decide about its leads. Everything a job printed is
 // shown as plain text.
-import { useState } from 'react'
-import { CheckIcon, PlayIcon, PlusIcon, RefreshCwIcon, ShieldAlertIcon, Trash2Icon, Undo2Icon, XIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { BrainIcon, PlayIcon, PlusIcon, RefreshCwIcon, ShieldAlertIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { interpolate, useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Sprite } from '@/companion/companion'
@@ -12,16 +12,22 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { creatureCard, toCompanionState, workingSpecies, type CreatureCard } from '@/growth/companions'
+import { Textarea } from '@/components/ui/textarea'
+import { creatureName, shortTime as time, type Say } from '@/companion/companion-words'
+import { Asks, LeadRow } from '@/components/grove-leads'
+import { Memory, SoulEditor } from '@/components/grove-soul'
+import { creatureCard, keptTargets, toCompanionState, workingSpecies, type CreatureCard } from '@/growth/companions'
+import { CREATURE_TAB_LABEL, CREATURE_TABS, type CreatureTab } from '@/growth/grove-view'
 import {
-  CRONLORD_STATE_LABEL, DAILY_LOSS_CAP, jobFailing, LEAD_KIND_LABEL, LEAD_POINTS, LEAD_STATUS_LABEL, REACH_LABEL, RUN_STATUS_LABEL, runFailed, SCHEDULE_LABEL, SCHEDULES,
-  type CompanionJob, type CompanionSpecies, type CompanionState, type CronLordState, type Lead, type LeadStatus, type Ritual, type Schedule,
+  CRONLORD_STATE_LABEL, DAILY_LOSS_CAP, ENGINE_LABEL, enginePaid, jobFailing, LEAD_POINTS, PARAM_TEXT_MAX, REACH_LABEL, RUN_STATUS_LABEL, runFailed, SCHEDULE_LABEL, SCHEDULES,
+  SOURCE_SHARE, type CompanionJob, type CompanionSpecies, type CompanionState, type CronLordState, type Ritual, type Schedule,
 } from '../../../../shared/annealer/companions.ts'
 
 const NO_BRANCH = 'none'
-const RESOLVED_SHOWN = 6
-const when = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-const time = (at: string | null) => { const date = at ? new Date(at) : null; return date && !Number.isNaN(date.getTime()) ? when.format(date) : null }
+const SETTLED_SHOWN = 6
+/** While a creature is thinking, the panel asks the worker to read CronLord this often, and gives up after this many tries. */
+const THINKING_CHECK_MS = 4000
+const THINKING_CHECKS = 45
 
 /** The colour of the connection chip. A new state fails the typecheck until it has one. */
 const CRONLORD_TONE: Record<CronLordState, string> = {
@@ -29,24 +35,25 @@ const CRONLORD_TONE: Record<CronLordState, string> = {
   unreachable: 'border-attention-foreground/50 text-attention-foreground', refused: 'border-attention-foreground/50 text-attention-foreground',
 }
 
-function CreatureTile({ card, palette, groveLevel, selected, onSelect }: { card: CreatureCard; palette: CompanionPalette; groveLevel: number; selected: boolean; onSelect: () => void }) {
+function CreatureTile({ card, catchphrase, palette, groveLevel, selected, onSelect }: { card: CreatureCard; catchphrase: string; palette: CompanionPalette; groveLevel: number; selected: boolean; onSelect: () => void }) {
   const { t } = useI18n()
   const unlocked = speciesUnlocked(card.species, groveLevel)
   const failing = card.failing.length > 0
   return (
     <Button variant="bare" disabled={!unlocked} aria-pressed={selected} onClick={onSelect}
       className={cn('flex w-full items-start gap-3 rounded-xl border bg-card p-3 text-left font-normal whitespace-normal transition-colors', selected ? 'border-primary' : 'border-border/70 hover:border-accent-border', !unlocked && 'opacity-55')}>
-      <Sprite frame={SPECIES_FRAMES[card.species][failing ? 'concerned' : card.jobs > 0 ? 'working' : 'resting'][0]} palette={palette} className={cn('size-12 shrink-0', !unlocked && 'grayscale')} />
+      <Sprite frame={SPECIES_FRAMES[card.species][failing ? 'concerned' : card.jobs > 0 || card.thinking > 0 ? 'working' : 'resting'][0]} palette={palette} className={cn('size-12 shrink-0', !unlocked && 'grayscale')} />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
-          <span className="font-semibold">{t(COMPANION_SPECIES_LABEL[card.species])}</span>
+          <span className="min-w-0 truncate font-semibold">{card.name || t(COMPANION_SPECIES_LABEL[card.species])}{card.name && <span className="font-normal text-muted-foreground"> · {t(COMPANION_SPECIES_LABEL[card.species])}</span>}</span>
           <span className="font-mono text-[11px] tabular-nums">{unlocked ? `LV ${card.level}` : interpolate(t('Grove LV {level}'), { level: COMPANION_UNLOCK_LEVEL[card.species] })}</span>
         </span>
-        <span className="block text-xs text-muted-foreground">{t(COMPANION_SPECIES_ROLE[card.species])}</span>
+        <span className="block text-xs text-muted-foreground">{catchphrase ? `“${catchphrase}”` : t(COMPANION_SPECIES_ROLE[card.species])}</span>
         <span aria-hidden="true" className="mt-2 block h-1 overflow-hidden rounded-full bg-border"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.round(card.intoLevel * 100)}%` }} /></span>
         <span className="mt-1.5 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground tabular-nums">
           <span>{interpolate(t('{points} earned · {next} to LV {level}'), { points: card.points, next: card.toNextLevel, level: card.level + 1 })}</span>
-          <span>{interpolate(t(card.jobs === 1 ? '{count} job' : '{count} jobs'), { count: card.jobs })}</span>
+          {card.jobs > 0 && <span>{interpolate(t(card.jobs === 1 ? '{count} job' : '{count} jobs'), { count: card.jobs })}</span>}
+          {card.thinking > 0 && <span className="animate-pulse text-working-foreground">{t('Thinking')}</span>}
           {card.waiting > 0 && <span className="text-attention-foreground">{interpolate(t(card.waiting === 1 ? '{count} lead to decide' : '{count} leads to decide'), { count: card.waiting })}</span>}
           {failing && <span className="font-medium text-attention-foreground">{t('A job is failing')}</span>}
         </span>
@@ -170,24 +177,57 @@ function JobRow({ job, ritual, branchName, readOnly, onDone }: { job: CompanionJ
   )
 }
 
-function LeadRow({ lead, readOnly, onDecide }: { lead: Lead; readOnly: boolean; onDecide: (status: LeadStatus) => void }) {
+/** One question to a creature's model about everything kept on a target. */
+function AskForm({ species, ritual, state, onAsked }: { species: CompanionSpecies; ritual: Ritual; state: CompanionState; onAsked: Say }) {
   const { t } = useI18n()
+  const targets = keptTargets(state.leads)
+  const [target, setTarget] = useState(targets[0]?.host ?? '')
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const soul = state.souls[species]
+  const name = creatureName(state, species, t)
+  const notesParam = ritual.params.find((param) => param.type === 'text')
+  const picked = targets.some((entry) => entry.host === target) ? target : targets[0]?.host ?? ''
+  const ask = async () => {
+    setBusy(true); setError(null)
+    const answer = await askWorker('/api/annealer/asks', 'POST', { species, ritual: ritual.id, leadId: null, params: { TARGET: picked, ...(notesParam ? { [notesParam.name]: notes } : {}) } })
+    setBusy(false)
+    if (!answer.ok) { setError(answer.message); return }
+    setNotes('')
+    await loadCompanions()
+    onAsked(interpolate(t('{name} is thinking. Its answer arrives below as leads.'), { name }))
+  }
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-      <div className="min-w-0 flex-1 basis-64">
-        <p className={cn('font-mono text-[0.8rem] break-all', lead.status === 'dismissed' && 'text-muted-foreground line-through')}>{lead.text}</p>
-        <p className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-          <span>{t(LEAD_KIND_LABEL[lead.kind])}</span><span className="break-all">{lead.target}</span><span>{t(COMPANION_SPECIES_LABEL[lead.species])}</span>{time(lead.createdAt) && <span>{time(lead.createdAt)}</span>}
-          {lead.status !== 'new' && <span className={cn(lead.status === 'kept' ? 'text-shipped-foreground' : 'text-idle-foreground')}>{t(LEAD_STATUS_LABEL[lead.status])} · {LEAD_POINTS[lead.status] > 0 ? '+' : ''}{LEAD_POINTS[lead.status]}</span>}
-        </p>
+    <form className="space-y-3 rounded-xl border border-border/70 bg-card p-3" onSubmit={(event) => { event.preventDefault(); if (picked && !busy) void ask() }}>
+      <div>
+        <p className="section-label">{interpolate(t('Ask {name}: {ritual}'), { name, ritual: t(ritual.name) })}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t(ritual.description)}</p>
       </div>
-      {!readOnly && (lead.status === 'new' ? (
-        <span className="flex items-center gap-1.5">
-          <Button size="xs" onClick={() => onDecide('kept')}><CheckIcon />{interpolate(t('Keep +{points}'), { points: LEAD_POINTS.kept })}</Button>
-          <Button size="xs" variant="outline" onClick={() => onDecide('dismissed')}><XIcon />{interpolate(t('Noise {points}'), { points: LEAD_POINTS.dismissed })}</Button>
-        </span>
-      ) : <Button size="xs" variant="ghost" onClick={() => onDecide('new')}><Undo2Icon />{t('Undo')}</Button>)}
-    </li>
+      {targets.length === 0 ? <p className="text-sm text-muted-foreground">{interpolate(t('{name} reads what you kept about a target, and nothing is kept yet. Give Moth, Bolt or Weevil a job and keep some of what they bring back.'), { name })}</p> : (
+        <>
+          <fieldset className="space-y-1">
+            <legend className="text-xs font-medium">{t('About')}</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {targets.map((entry) => <Button key={entry.host} type="button" size="xs" variant={picked === entry.host ? 'default' : 'outline'} aria-pressed={picked === entry.host} onClick={() => setTarget(entry.host)}><span className="font-mono">{entry.host}</span><span className="opacity-70">{entry.count}</span></Button>)}
+            </div>
+          </fieldset>
+          {notesParam && (
+            <div className="space-y-1">
+              <Label htmlFor={`ask-notes-${ritual.id}`} className="text-xs">{t(notesParam.label)}{notesParam.optional && <span className="font-normal text-muted-foreground"> · {t('optional')}</span>}</Label>
+              <Textarea id={`ask-notes-${ritual.id}`} value={notes} rows={3} maxLength={PARAM_TEXT_MAX} placeholder={notesParam.placeholder} onChange={(event) => setNotes(event.target.value)} />
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground">
+            {soul.engine === 'none' ? interpolate(t('{name} has no model yet. Choose one under Soul.'), { name })
+              : interpolate(t(enginePaid(soul.engine) ? 'Asked once, on {engine} ({model}). This spends tokens or your plan.' : 'Asked once, on {engine} ({model}). Free.'), { engine: t(ENGINE_LABEL[soul.engine]), model: soul.model || '?' })}
+            {' '}{t('It reads the leads you kept on that target and your notes. It gets no tools.')}
+          </p>
+          {error && <p role="alert" className="text-sm text-attention-foreground">{error}</p>}
+          <Button type="submit" size="sm" busy={busy} disabled={!picked || busy}><BrainIcon />{interpolate(t('Ask {name}'), { name })}</Button>
+        </>
+      )}
+    </form>
   )
 }
 
@@ -230,20 +270,42 @@ function Scope({ state, readOnly }: { state: CompanionState; readOnly: boolean }
   )
 }
 
-export function CompanionsPanel({ source, palette, groveLevel, branches }: { source: CompanionSource | null; palette: CompanionPalette; groveLevel: number; branches: { id: string; name: string }[] }) {
+export function CompanionsPanel({ source, palette, groveLevel, branches, picked, onPick }: {
+  source: CompanionSource | null; palette: CompanionPalette; groveLevel: number; branches: { id: string; name: string }[]
+  /** The creature that is open. The Grove holds it, so picking one on the tree opens it here. */
+  picked: CompanionSpecies | null; onPick: (species: CompanionSpecies) => void
+}) {
   const { t } = useI18n()
   const { load, state } = useCompanions(source)
   const readOnly = source !== 'local'
   const species = workingSpecies(state)
-  const [picked, setPicked] = useState<CompanionSpecies | null>(null)
   const selected = picked && species.includes(picked) && speciesUnlocked(picked, groveLevel) ? picked : species.find((entry) => speciesUnlocked(entry, groveLevel)) ?? null
+  const [tab, setTab] = useState<CreatureTab>('work')
   const [checking, setChecking] = useState(false)
   const [notice, setNotice] = useState<{ text: string; failed: boolean } | null>(null)
-  const say = (text: string, failed = false) => setNotice({ text, failed })
+  const say: Say = (text, failed = false) => setNotice({ text, failed })
   const branchName = (id: string | null) => branches.find((branch) => branch.id === id)?.name ?? null
   const connected = state.cronlord.state === 'connected'
   const waiting = state.leads.filter((lead) => lead.status === 'new')
-  const resolved = state.leads.filter((lead) => lead.status !== 'new').slice(0, RESOLVED_SHOWN)
+  const moving = state.leads.filter((lead) => lead.status === 'kept' || lead.status === 'confirmed' || lead.status === 'shipped')
+  const settled = state.leads.filter((lead) => !waiting.includes(lead) && !moving.includes(lead)).slice(0, SETTLED_SHOWN)
+  const thinking = state.asks.filter((ask) => ask.state === 'waiting').length
+  const mine = selected ? state.rituals.filter((ritual) => ritual.owner === selected) : []
+  const jobRituals = mine.filter((ritual) => ritual.runner === 'shell')
+  const targetQuestions = mine.filter((ritual) => ritual.runner === 'model' && ritual.reads === 'target-leads')
+  const leadQuestions = mine.filter((ritual) => ritual.runner === 'model' && ritual.reads === 'one-lead')
+
+  // While a creature is thinking, read CronLord for its answer. This only reads: it starts nothing and asks nothing again.
+  useEffect(() => {
+    if (source !== 'local' || thinking === 0) return
+    let tries = 0
+    const timer = window.setInterval(() => {
+      tries += 1
+      if (tries > THINKING_CHECKS) { window.clearInterval(timer); return }
+      void loadCompanions(true)
+    }, THINKING_CHECK_MS)
+    return () => window.clearInterval(timer)
+  }, [source, thinking])
 
   const check = async () => {
     setChecking(true)
@@ -256,24 +318,17 @@ export function CompanionsPanel({ source, palette, groveLevel, branches }: { sou
       ? interpolate(t(failed === 1 ? '{count} job could not be read from CronLord.' : '{count} jobs could not be read from CronLord.'), { count: failed })
       : added === 0 ? t('No new leads.') : interpolate(t(added === 1 ? '{count} new lead.' : '{count} new leads.'), { count: added }), failed > 0)
   }
-  const decide = async (lead: Lead, status: LeadStatus) => {
-    const answer = await askWorker(`/api/annealer/leads/${encodeURIComponent(lead.id)}`, 'POST', { status })
-    if (!answer.ok) { say(answer.message, true); return }
-    const next = toCompanionState({ leads: [answer.body.lead], ledger: answer.body.ledger })
-    patchCompanions({ leads: state.leads.map((entry) => entry.id === lead.id ? next.leads[0] ?? entry : entry), ledger: next.ledger })
-    setNotice(null)
-  }
 
   return (
     <section aria-label={t('Companions')} className="space-y-5 rounded-xl border bg-card/70 p-4 md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-xl">
           <p className="section-label">{t('Companions')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('Creatures that do a job on a schedule and bring back what they found. CronLord runs the jobs; a creature levels up only from the leads you keep, and loses a little for noise.')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('Creatures that do a job on a schedule or answer a question, and bring back leads. CronLord carries both. A creature levels up only from how far its leads get, and loses for the ones that were wrong.')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn('rounded-full border px-2 py-0.5 text-xs', CRONLORD_TONE[state.cronlord.state])}>{t(CRONLORD_STATE_LABEL[state.cronlord.state])}{state.cronlord.version && ` · ${state.cronlord.version}`}</span>
-          {!readOnly && <Button size="sm" variant="outline" busy={checking} disabled={!connected || state.jobs.length === 0} onClick={() => void check()}><RefreshCwIcon />{t('Check for new runs')}</Button>}
+          {!readOnly && <Button size="sm" variant="outline" busy={checking} disabled={!connected || (state.jobs.length === 0 && thinking === 0)} onClick={() => void check()}><RefreshCwIcon />{t('Check for new runs')}</Button>}
         </div>
       </div>
 
@@ -303,8 +358,8 @@ export function CompanionsPanel({ source, palette, groveLevel, branches }: { sou
       )}
 
       {species.length > 0 && (
-        <ul className="grid gap-2 md:grid-cols-2">
-          {species.map((entry) => <li key={entry}><CreatureTile card={creatureCard(state, entry)} palette={palette} groveLevel={groveLevel} selected={selected === entry} onSelect={() => setPicked(entry)} /></li>)}
+        <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {species.map((entry) => <li key={entry}><CreatureTile card={creatureCard(state, entry)} catchphrase={state.souls[entry].catchphrase} palette={palette} groveLevel={groveLevel} selected={selected === entry} onSelect={() => onPick(entry)} /></li>)}
         </ul>
       )}
 
@@ -312,13 +367,29 @@ export function CompanionsPanel({ source, palette, groveLevel, branches }: { sou
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <div className="space-y-5">
-          {!readOnly && selected && connected && (
-            <AssignForm key={selected} species={selected} rituals={state.rituals.filter((ritual) => ritual.owner === selected)} branches={branches} scopeEmpty={state.scope.length === 0} onAssigned={say} />
+          {selected && (
+            <div className="space-y-3">
+              <div className="flex w-fit max-w-full flex-wrap rounded-[10px] border border-control-edge p-0.5" role="group" aria-label={interpolate(t('{name}: what to show'), { name: creatureName(state, selected, t) })}>
+                {CREATURE_TABS.map((option) => <Button key={option} size="xs" variant={tab === option ? 'default' : 'ghost'} aria-pressed={tab === option} onClick={() => setTab(option)}>{t(CREATURE_TAB_LABEL[option])}{option === 'memory' && ` · ${state.opinions.filter((opinion) => opinion.species === selected).length}`}</Button>)}
+              </div>
+              {tab === 'work' && (
+                <>
+                  {!readOnly && connected && jobRituals.length > 0 && <AssignForm key={`job-${selected}`} species={selected} rituals={jobRituals} branches={branches} scopeEmpty={state.scope.length === 0} onAssigned={say} />}
+                  {!readOnly && connected && targetQuestions.map((ritual) => <AskForm key={`${selected}-${ritual.id}`} species={selected} ritual={ritual} state={state} onAsked={say} />)}
+                  {leadQuestions.length > 0 && <p className="rounded-xl border border-border/70 bg-card p-3 text-sm text-muted-foreground">{interpolate(t('{name} works on one lead at a time. Find the lead on the right and press “{name}: {ritual}”.'), { name: creatureName(state, selected, t), ritual: t(leadQuestions[0].name) })} {t(leadQuestions[0].description)}</p>}
+                  {!readOnly && !connected && <p className="text-sm text-muted-foreground">{t('Work starts once the worker can reach CronLord.')}</p>}
+                  {readOnly && mine.map((ritual) => <p key={ritual.id} className="rounded-xl border border-border/70 bg-card p-3 text-sm"><span className="font-medium">{t(ritual.name)}</span> <span className="text-muted-foreground">{t(ritual.description)}</span></p>)}
+                </>
+              )}
+              {tab === 'soul' && <SoulEditor key={`soul-${selected}`} species={selected} state={state} readOnly={readOnly} onSay={say} />}
+              {tab === 'memory' && <Memory key={`memory-${selected}`} species={selected} state={state} readOnly={readOnly} onSay={say} />}
+            </div>
           )}
-          {!readOnly && !selected && species.length > 0 && <p className="text-sm text-muted-foreground">{t('No working creature is unlocked yet. They unlock as the Grove levels up from recorded work.')}</p>}
+          {!selected && species.length > 0 && <p className="text-sm text-muted-foreground">{t('No working creature is unlocked yet. They unlock as the Grove levels up from recorded work.')}</p>}
           <Scope state={state} readOnly={readOnly} />
         </div>
         <div className="min-w-0 space-y-5">
+          <Asks asks={state.asks} state={state} />
           <div>
             <p className="section-label pb-1">{t('Jobs')} · {state.jobs.length}</p>
             {state.jobs.length === 0 ? <p className="text-sm text-muted-foreground">{t('No creature has a job yet.')}</p> : (
@@ -330,16 +401,22 @@ export function CompanionsPanel({ source, palette, groveLevel, branches }: { sou
           <div>
             <p className="section-label pb-1">{t('Leads to decide')} · {waiting.length}</p>
             {waiting.length === 0 ? <p className="text-sm text-muted-foreground">{t('Nothing waiting. A job’s first run only sets its baseline.')}</p> : (
-              <ul className="divide-y border-t">{waiting.map((lead) => <LeadRow key={lead.id} lead={lead} readOnly={readOnly} onDecide={(status) => void decide(lead, status)} />)}</ul>
+              <ul className="divide-y border-t">{waiting.map((lead) => <LeadRow key={lead.id} lead={lead} state={state} groveLevel={groveLevel} readOnly={readOnly} onSay={say} />)}</ul>
             )}
           </div>
-          {resolved.length > 0 && (
+          {moving.length > 0 && (
             <div>
-              <p className="section-label pb-1">{t('Decided lately')}</p>
-              <ul className="divide-y border-t">{resolved.map((lead) => <LeadRow key={lead.id} lead={lead} readOnly={readOnly} onDecide={(status) => void decide(lead, status)} />)}</ul>
+              <p className="section-label pb-1">{t('Kept, and how far they got')} · {moving.length}</p>
+              <ul className="divide-y border-t">{moving.map((lead) => <LeadRow key={lead.id} lead={lead} state={state} groveLevel={groveLevel} readOnly={readOnly} onSay={say} />)}</ul>
             </div>
           )}
-          <p className="text-xs text-muted-foreground">{interpolate(t('A kept lead is worth +{kept}, noise {dismissed}. Running a job is worth nothing. A creature cannot lose more than {cap} in a day.'), { kept: LEAD_POINTS.kept, dismissed: LEAD_POINTS.dismissed, cap: DAILY_LOSS_CAP })}</p>
+          {settled.length > 0 && (
+            <div>
+              <p className="section-label pb-1">{t('Settled lately')}</p>
+              <ul className="divide-y border-t">{settled.map((lead) => <LeadRow key={lead.id} lead={lead} state={state} groveLevel={groveLevel} readOnly={readOnly} onSay={say} />)}</ul>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">{interpolate(t('A lead is worth where it stands: kept +{kept}, confirmed +{confirmed}, reported +{shipped}, accepted +{accepted}. Being wrong costs, most of all a report closed as not applicable ({na}). When a lead is reported, each creature whose lead it was built from gets {share}% of that. Running a job or asking a question is worth nothing, and no creature can lose more than {cap} in a day.'), { kept: LEAD_POINTS.kept, confirmed: LEAD_POINTS.confirmed, shipped: LEAD_POINTS.shipped, accepted: LEAD_POINTS.accepted, na: LEAD_POINTS['not-applicable'], share: Math.round(SOURCE_SHARE * 100), cap: DAILY_LOSS_CAP })}</p>
         </div>
       </div>
     </section>
