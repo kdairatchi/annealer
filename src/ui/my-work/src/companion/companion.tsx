@@ -15,7 +15,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { toGrove } from '@/growth/growth-model'
 import { NEXT_STEP_NOT_RECORDED } from '@/live/to-work-model'
 import { useRecentChanges, useStore, useWorkModel } from '@/store'
+import { jobFailing } from '../../../../shared/annealer/companions.ts'
 import { COMPANION_MOOD_LABEL, companionStatus, type CompanionMood } from './companion-mood'
+import { useCompanionSource, useCompanions } from './use-companions'
 import {
   COMPANION_COLORS, COMPANION_FRAME_MS, COMPANION_NAME_MAX, COMPANION_PALETTE_LABEL, COMPANION_PALETTES, COMPANION_SPECIES, COMPANION_SPECIES_LABEL,
   COMPANION_UNLOCK_LEVEL, SPECIES_FRAMES, speciesUnlocked, SPRITE_SIZE, type CompanionPalette, type CompanionSpecies, type SpriteFrame, type SpritePixel,
@@ -52,6 +54,7 @@ const STRIP_MOTION: Record<CompanionMood, { x: number[]; y: number[]; seconds: n
   celebrating: { x: [0, 0], y: [0, -10, 0], seconds: 0.5 },
   working: { x: [0, 44, 0], y: [0, 0], seconds: 6 },
   resting: { x: [0, 0], y: [0, 0], seconds: 1 },
+  concerned: { x: [0, -2, 2, 0], y: [0, 0], seconds: 1.4 },
 }
 
 export function Companion({ onOpenRequest, onOpenGrove }: { onOpenRequest: (requestId: string) => void; onOpenGrove: () => void }) {
@@ -63,10 +66,13 @@ export function Companion({ onOpenRequest, onOpenGrove }: { onOpenRequest: (requ
   const still = useReducedMotion()
   // The cheer ends on the clock, so the clock runs only while there is a change that could still be cheered.
   const now = useNow(changes.length > 0)
-  const status = useMemo(() => companionStatus(requests, changes, now, NEXT_STEP_NOT_RECORDED), [requests, changes, now])
   const level = useMemo(() => toGrove(focusAreas, requests, otherAsks, NEXT_STEP_NOT_RECORDED).level, [focusAreas, requests, otherAsks])
   // A creature saved before its level was reached (or after the tree shrank) falls back to the first one.
   const species = speciesUnlocked(companion.species, level) ? companion.species : COMPANION_SPECIES[0]
+  // Only this creature's own jobs worry it.
+  const { state: companions } = useCompanions(useCompanionSource())
+  const failing = useMemo(() => companions.jobs.filter((job) => job.species === species && jobFailing(job)).map((job) => job.target), [companions, species])
+  const status = useMemo(() => companionStatus(requests, changes, now, NEXT_STEP_NOT_RECORDED, failing), [requests, changes, now, failing])
   const frame = useFrame(status.mood, species)
   // The field holds what is being typed; a saved (cleaned) name replaces it.
   const [name, setName] = useState(companion.name)
@@ -92,7 +98,7 @@ export function Companion({ onOpenRequest, onOpenGrove }: { onOpenRequest: (requ
             </motion.span>
             <span className="absolute top-1.5 right-2 text-right leading-tight">
               <span className="block font-mono text-[10px] tracking-wider text-muted-foreground">LV {level}</span>
-              <span className={cn('block text-[10px] font-medium', status.mood === 'needs-you' ? 'text-attention-foreground' : status.mood === 'working' ? 'text-working-foreground' : status.mood === 'celebrating' ? 'text-shipped-foreground' : 'text-idle-foreground')}>{t(COMPANION_MOOD_LABEL[status.mood])}</span>
+              <span className={cn('block text-[10px] font-medium', status.mood === 'needs-you' || status.mood === 'concerned' ? 'text-attention-foreground' : status.mood === 'working' ? 'text-working-foreground' : status.mood === 'celebrating' ? 'text-shipped-foreground' : 'text-idle-foreground')}>{t(COMPANION_MOOD_LABEL[status.mood])}</span>
             </span>
           </Button>
         </PopoverTrigger>
@@ -129,13 +135,13 @@ export function Companion({ onOpenRequest, onOpenGrove }: { onOpenRequest: (requ
             </fieldset>
             <fieldset className="space-y-1">
               <legend className="text-xs font-medium">{t('Creature')}</legend>
-              <div className="flex gap-1.5">
+              <div className="grid grid-cols-4 gap-1.5">
                 {COMPANION_SPECIES.map((option) => {
                   const unlocked = speciesUnlocked(option, level)
                   return (
                     <Button key={option} variant="bare" disabled={!unlocked} aria-pressed={species === option} onClick={() => setCompanion({ species: option })}
                       title={unlocked ? t(COMPANION_SPECIES_LABEL[option]) : interpolate(t('{name} unlocks at Grove level {level}'), { name: t(COMPANION_SPECIES_LABEL[option]), level: COMPANION_UNLOCK_LEVEL[option] })}
-                      className={cn('flex h-14 w-16 flex-col items-center justify-center gap-0.5 rounded-lg border bg-card transition-colors', species === option ? 'border-primary' : 'border-control-edge hover:border-accent-border', !unlocked && 'opacity-45')}>
+                      className={cn('flex h-14 w-full flex-col items-center justify-center gap-0.5 rounded-lg border bg-card transition-colors', species === option ? 'border-primary' : 'border-control-edge hover:border-accent-border', !unlocked && 'opacity-45')}>
                       <Sprite frame={SPECIES_FRAMES[option].working[1]} palette={companion.palette} className={cn('size-7', !unlocked && 'grayscale')} />
                       <span className="font-mono text-[9px] tracking-wider text-muted-foreground">{unlocked ? t(COMPANION_SPECIES_LABEL[option]) : `LV ${COMPANION_UNLOCK_LEVEL[option]}`}</span>
                     </Button>

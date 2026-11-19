@@ -5,7 +5,7 @@ import { needsYou, type Request } from '../data.ts'
 import type { RequestChange } from '../live/update-queue.ts'
 
 /** The one definition of the companion's moods; sprites and words below are keyed by it. */
-export const COMPANION_MOODS = ['needs-you', 'celebrating', 'working', 'resting'] as const
+export const COMPANION_MOODS = ['needs-you', 'celebrating', 'working', 'resting', 'concerned'] as const
 export type CompanionMood = (typeof COMPANION_MOODS)[number]
 
 /** The mood in words, for the label under the sprite and for screen readers. */
@@ -14,6 +14,7 @@ export const COMPANION_MOOD_LABEL: Record<CompanionMood, string> = {
   celebrating: 'Just shipped',
   working: 'Working',
   resting: 'Resting',
+  concerned: 'A job is failing',
 }
 
 /** How long a shipped request is worth a cheer after the screen saw it. */
@@ -31,10 +32,11 @@ const titleOf = (request: Request) => request.title ?? request.resolvesTo?.title
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
 
 /**
- * Attention first, as My Work sorts it: something waiting on you outranks a cheer, a cheer outranks work in
- * progress, and with nothing moving it rests and says what was left without a next step.
+ * Attention first, as My Work sorts it: something waiting on you outranks a cheer, a cheer outranks a failing job,
+ * a failing job outranks work in progress, and with nothing moving it rests and says what was left without a next
+ * step. `failingJobs` names this creature's jobs whose last two runs failed.
  */
-export function companionStatus(requests: readonly Request[], recentChanges: readonly RequestChange[], now: number, nextStepMissingText: string): CompanionStatus {
+export function companionStatus(requests: readonly Request[], recentChanges: readonly RequestChange[], now: number, nextStepMissingText: string, failingJobs: readonly string[] = []): CompanionStatus {
   const open = requests.filter((request) => !request.closed)
   const waiting = open.filter(needsYou)
   if (waiting.length > 0) {
@@ -46,6 +48,10 @@ export function companionStatus(requests: readonly Request[], recentChanges: rea
   }
   const shipped = recentChanges.find((change) => change.kind === 'state' && change.to === 'shipped' && now - change.at < CHEER_MS)
   if (shipped) return { mood: 'celebrating', requestId: shipped.requestId, line: `Shipped: “${shipped.title}”.` }
+  // A job this creature was given has failed twice running. It outranks work in progress: nobody is watching a job.
+  if (failingJobs.length > 0) {
+    return { mood: 'concerned', requestId: null, line: failingJobs.length === 1 ? `“${failingJobs[0]}” failed its last two runs.` : `${failingJobs.length} jobs failed their last two runs. First: “${failingJobs[0]}”.` }
+  }
   const working = open.filter((request) => request.state === 'working')
   if (working.length > 0) {
     return {

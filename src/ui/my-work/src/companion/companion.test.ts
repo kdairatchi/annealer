@@ -62,8 +62,12 @@ test('a saved name is trimmed, shortened, and never empty', () => {
 
 test('creatures unlock at their level, the first one from the start, and no two creatures look the same', () => {
   assert.equal(COMPANION_UNLOCK_LEVEL[COMPANION_SPECIES[0]], 1)
-  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 1)), [true, false, false])
-  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 4)), [true, true, true])
+  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 1)), [true, false, false, false])
+  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 3)), [true, true, true, false])
+  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 4)), [true, true, true, true])
+  // The list is in the order they unlock.
+  const levels = COMPANION_SPECIES.map((species) => COMPANION_UNLOCK_LEVEL[species])
+  assert.deepEqual(levels, [...levels].sort((a, b) => a - b))
   const looks = new Set(COMPANION_SPECIES.map((species) => SPECIES_FRAMES[species].working[1].join('')))
   assert.equal(looks.size, COMPANION_SPECIES.length)
 })
@@ -77,4 +81,16 @@ test('every accent keeps the shipped orange\'s contrast, on near-black text and 
     assert.ok(contrast(tones.primary, '#fffdf9') >= orangeOnCard - 0.2, `${accent} on a light card: ${contrast(tones.primary, '#fffdf9').toFixed(2)}`)
   }
   assert.equal(ACCENT_TONES.ember, null)
+})
+
+test('a job that failed twice running worries the companion, after a cheer and before work in progress', () => {
+  const working = { id: 'r1', title: 'Fix it', state: 'working', closed: false, next: { text: 'go' } } as never
+  assert.equal(companionStatus([working], [], 0, 'none', []).mood, 'working')
+  const worried = companionStatus([working], [], 0, 'none', ['example.com'])
+  assert.equal(worried.mood, 'concerned')
+  assert.equal(worried.requestId, null)
+  assert.match(worried.line, /example\.com/)
+  assert.match(companionStatus([], [], 0, 'none', ['a.com', 'b.com']).line, /^2 jobs/)
+  const waiting = { id: 'r2', title: 'Answer', state: 'your-move', closed: false, next: { text: 'go' } } as never
+  assert.equal(companionStatus([waiting], [], 0, 'none', ['example.com']).mood, 'needs-you')
 })

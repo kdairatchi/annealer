@@ -2,6 +2,7 @@
 // Each row is 12 characters: `.` empty, `d` outline, `b` body, `e` eye, `f` flame, `h` flame highlight, `a` alert mark.
 // Frames are composed from a few rows, so a new pose is a few lines and every frame is the same size by construction.
 import type { CompanionMood } from './companion-mood.ts'
+import { COMPANION_SPECIES, type CompanionSpecies } from '../../../../shared/annealer/companions.ts'
 
 export const SPRITE_SIZE = 12
 export type SpritePixel = 'd' | 'b' | 'e' | 'f' | 'h' | 'a'
@@ -27,14 +28,21 @@ const ROUND_HEAD = {
   headArmsUp: ['...dddddd...', 'd.dbbbbbbd.d', 'ddbbbbbbbbdd'],
 }
 
-/** The one definition of the creatures a companion can be, in the order they unlock. */
-export const COMPANION_SPECIES = ['cinder', 'sprout', 'bolt'] as const
-export type CompanionSpecies = (typeof COMPANION_SPECIES)[number]
+// The creatures themselves are defined once, where the worker can read the list too.
+export { COMPANION_SPECIES, type CompanionSpecies }
 
-export const COMPANION_SPECIES_LABEL: Record<CompanionSpecies, string> = { cinder: 'Cinder', sprout: 'Sprout', bolt: 'Bolt' }
+export const COMPANION_SPECIES_LABEL: Record<CompanionSpecies, string> = { cinder: 'Cinder', sprout: 'Sprout', bolt: 'Bolt', moth: 'Moth' }
+
+/** What each creature is for. Cinder and Sprout read recorded work; Bolt and Moth are given jobs. */
+export const COMPANION_SPECIES_ROLE: Record<CompanionSpecies, string> = {
+  cinder: 'Forge spirit. Watches the work as it moves.',
+  sprout: 'Seedling. Keeps what is waiting from being forgotten.',
+  bolt: 'Watcher. Checks an address and reports when it changes.',
+  moth: 'Scout. Finds new hosts under a domain.',
+}
 
 /** The Grove level at which each creature can be picked. Earned by recorded work; there is no other way to get one. */
-export const COMPANION_UNLOCK_LEVEL: Record<CompanionSpecies, number> = { cinder: 1, sprout: 2, bolt: 4 }
+export const COMPANION_UNLOCK_LEVEL: Record<CompanionSpecies, number> = { cinder: 1, sprout: 2, moth: 3, bolt: 4 }
 
 export const speciesUnlocked = (species: CompanionSpecies, groveLevel: number) => groveLevel >= COMPANION_UNLOCK_LEVEL[species]
 
@@ -59,6 +67,14 @@ const PARTS: Record<CompanionSpecies, CreatureParts> = {
     headArmsUp: ['..dddddddd..', 'd.dbbbbbbd.d', 'dddbbbbbbddd'],
     eyes: { open: '.dbbeeeebbd.', closed: '.dbbddddbbd.', wide: '.dbeeeeeebd.' },
   },
+  // A moth: two antennae, wide-set eyes and a wing at each side that lifts when it cheers.
+  moth: {
+    tuft: ['..f......f..', '...f....f...', '....f..f....'], tuftTall: ['.hf......fh.', '...f....f...', '....f..f....'],
+    tuftAlert: ['..f......fa.', '...f....f.a.', '....f..f....'], tuftLow: ['............', '..f......f..', '...ff..ff...'],
+    head: ['...dddddd...', 'f.dbbbbbbd.f', 'fdbbbbbbbbdf'], headAlert: ['...dddddd.a.', 'f.dbbbbbbd.f', 'fdbbbbbbbbdf'],
+    headArmsUp: ['f..dddddd..f', 'ffdbbbbbbdff', 'fdbbbbbbbbdf'],
+    eyes: { open: '.dbebbbbebd.', closed: '.dbdbbbbdbd.', wide: '.dbeebbeebd.' },
+  },
 }
 
 const frame = (tuft: string[], head: string[], eyes: string, feet: string[]): SpriteFrame => [...tuft, ...head, eyes, ...BELLY, ...feet]
@@ -70,19 +86,21 @@ function framesOf(parts: CreatureParts): Record<CompanionMood, readonly SpriteFr
     celebrating: [frame(parts.tuftTall, parts.headArmsUp, eyes.open, FEET.tucked), frame(parts.tuft, parts.head, eyes.open, FEET.stand)],
     working: [frame(parts.tuft, parts.head, eyes.open, FEET.left), frame(parts.tuft, parts.head, eyes.open, FEET.stand), frame(parts.tuft, parts.head, eyes.open, FEET.right), frame(parts.tuft, parts.head, eyes.open, FEET.stand)],
     resting: [frame(parts.tuftLow, parts.head, eyes.closed, FEET.tucked), frame(parts.tuftLow, parts.head, eyes.closed, FEET.tucked), frame(parts.tuft, parts.head, eyes.closed, FEET.tucked)],
+    // Head down, eyes wide, then a glance up at the mark: something it was given to do keeps going wrong.
+    concerned: [frame(parts.tuftLow, parts.headAlert, eyes.wide, FEET.stand), frame(parts.tuftLow, parts.head, eyes.open, FEET.stand), frame(parts.tuftLow, parts.headAlert, eyes.wide, FEET.tucked)],
   }
 }
 
 /** Every creature's frames for every mood. A creature or a mood without frames fails the typecheck. */
 export const SPECIES_FRAMES: Record<CompanionSpecies, Record<CompanionMood, readonly SpriteFrame[]>> = {
-  cinder: framesOf(PARTS.cinder), sprout: framesOf(PARTS.sprout), bolt: framesOf(PARTS.bolt),
+  cinder: framesOf(PARTS.cinder), sprout: framesOf(PARTS.sprout), bolt: framesOf(PARTS.bolt), moth: framesOf(PARTS.moth),
 }
 
 /** The first creature's frames, for places that draw the companion before a choice is known. */
 export const COMPANION_FRAMES = SPECIES_FRAMES.cinder
 
 /** Milliseconds each frame holds. Walking is quick, sleeping is slow. */
-export const COMPANION_FRAME_MS: Record<CompanionMood, number> = { 'needs-you': 360, celebrating: 240, working: 180, resting: 900 }
+export const COMPANION_FRAME_MS: Record<CompanionMood, number> = { 'needs-you': 360, celebrating: 240, working: 180, resting: 900, concerned: 520 }
 
 /** The one definition of the palettes a person can pick; the picker and the saved preference both read it. */
 export const COMPANION_PALETTES = ['ember', 'moss', 'tide', 'ash'] as const
