@@ -2,7 +2,7 @@
 // Each row is 12 characters: `.` empty, `d` outline, `b` body, `e` eye, `f` flame, `h` flame highlight, `a` alert mark.
 // Frames are composed from a few rows, so a new pose is a few lines and every frame is the same size by construction.
 import type { CompanionMood } from './companion-mood.ts'
-import { COMPANION_SPECIES, type CompanionSpecies } from '../../../../shared/annealer/companions.ts'
+import { COMPANION_SPECIES, SPECIES_NAME, type CompanionSpecies } from '../../../../shared/annealer/companions.ts'
 
 export const SPRITE_SIZE = 12
 export type SpritePixel = 'd' | 'b' | 'e' | 'f' | 'h' | 'a'
@@ -31,18 +31,21 @@ const ROUND_HEAD = {
 // The creatures themselves are defined once, where the worker can read the list too.
 export { COMPANION_SPECIES, type CompanionSpecies }
 
-export const COMPANION_SPECIES_LABEL: Record<CompanionSpecies, string> = { cinder: 'Cinder', sprout: 'Sprout', bolt: 'Bolt', moth: 'Moth' }
+export const COMPANION_SPECIES_LABEL: Record<CompanionSpecies, string> = SPECIES_NAME
 
 /** What each creature is for. Cinder and Sprout read recorded work; Bolt and Moth are given jobs. */
 export const COMPANION_SPECIES_ROLE: Record<CompanionSpecies, string> = {
-  cinder: 'Forge spirit. Watches the work as it moves.',
+  cinder: 'Smith. Turns what you kept into hypotheses to test.',
   sprout: 'Seedling. Keeps what is waiting from being forgotten.',
-  bolt: 'Watcher. Checks an address and reports when it changes.',
   moth: 'Scout. Finds new hosts under a domain.',
+  bolt: 'Watcher. Checks an address and reports when it changes.',
+  weevil: 'Code reader. Lists the paths inside a script and reports new ones.',
+  rime: 'Skeptic. Tries to break a lead before a triager does.',
+  quill: 'Writer. Drafts a report from a confirmed lead.',
 }
 
 /** The Grove level at which each creature can be picked. Earned by recorded work; there is no other way to get one. */
-export const COMPANION_UNLOCK_LEVEL: Record<CompanionSpecies, number> = { cinder: 1, sprout: 2, moth: 3, bolt: 4 }
+export const COMPANION_UNLOCK_LEVEL: Record<CompanionSpecies, number> = { cinder: 1, sprout: 2, moth: 3, bolt: 4, weevil: 5, rime: 6, quill: 7 }
 
 export const speciesUnlocked = (species: CompanionSpecies, groveLevel: number) => groveLevel >= COMPANION_UNLOCK_LEVEL[species]
 
@@ -75,6 +78,28 @@ const PARTS: Record<CompanionSpecies, CreatureParts> = {
     headArmsUp: ['f..dddddd..f', 'ffdbbbbbbdff', 'fdbbbbbbbbdf'],
     eyes: { open: '.dbebbbbebd.', closed: '.dbdbbbbdbd.', wide: '.dbeebbeebd.' },
   },
+  // A weevil: a long snout curling down one side, and a narrow head.
+  weevil: {
+    tuft: ['........ff..', '.........ff.', '..........f.'], tuftTall: ['.......hff..', '.........ff.', '..........f.'],
+    tuftAlert: ['.a......ff..', '.a.......ff.', '..........f.'], tuftLow: ['............', '........ff..', '.........ff.'],
+    head: ['....dddd..f.', '...dbbbbdff.', '.dbbbbbbbbd.'], headAlert: ['....dddd..f.', '...dbbbbdff.', '.dbbbbbbbbd.'],
+    headArmsUp: ['....dddd..f.', 'd..dbbbbdffd', 'ddbbbbbbbbdd'],
+    eyes: { open: '.dbbebbebbd.', closed: '.dbddbbddbd.', wide: '.dbeebbeebd.' },
+  },
+  // A shard of ice: a pointed crown and one slit of an eye.
+  rime: {
+    tuft: ['.....hh.....', '....hffh....', '...hffffh...'], tuftTall: ['.....hh.....', '....hhhh....', '...hffffh...'],
+    tuftAlert: ['.....hh...a.', '....hffh..a.', '...hffffh...'], tuftLow: ['............', '.....hh.....', '....hffh....'],
+    head: ['...dffffd...', '..dbbbbbbd..', '.dbbbbbbbbd.'], headAlert: ['...dffffd.a.', '..dbbbbbbd..', '.dbbbbbbbbd.'],
+    headArmsUp: ['...dffffd...', 'd.dbbbbbbd.d', 'ddbbbbbbbbdd'],
+    eyes: { open: '.dbbeeeebbd.', closed: '.dbbbddbbbd.', wide: '.dbeeeeeebd.' },
+  },
+  // A small porcupine: a row of quills standing up along its back.
+  quill: {
+    tuft: ['..f.f.f.f...', '..f.f.f.f.f.', '.ffffffffff.'], tuftTall: ['..h.h.h.h...', '..f.f.f.f.h.', '.ffffffffff.'],
+    tuftAlert: ['..f.f.f.f.a.', '..f.f.f.f.a.', '.ffffffffff.'], tuftLow: ['............', '..f.f.f.f...', '.ffffffffff.'],
+    ...ROUND_HEAD, eyes: { open: '.dbbebbebbd.', closed: '.dbddbbddbd.', wide: '.dbeebbeebd.' },
+  },
 }
 
 const frame = (tuft: string[], head: string[], eyes: string, feet: string[]): SpriteFrame => [...tuft, ...head, eyes, ...BELLY, ...feet]
@@ -93,7 +118,8 @@ function framesOf(parts: CreatureParts): Record<CompanionMood, readonly SpriteFr
 
 /** Every creature's frames for every mood. A creature or a mood without frames fails the typecheck. */
 export const SPECIES_FRAMES: Record<CompanionSpecies, Record<CompanionMood, readonly SpriteFrame[]>> = {
-  cinder: framesOf(PARTS.cinder), sprout: framesOf(PARTS.sprout), bolt: framesOf(PARTS.bolt), moth: framesOf(PARTS.moth),
+  cinder: framesOf(PARTS.cinder), sprout: framesOf(PARTS.sprout), moth: framesOf(PARTS.moth), bolt: framesOf(PARTS.bolt),
+  weevil: framesOf(PARTS.weevil), rime: framesOf(PARTS.rime), quill: framesOf(PARTS.quill),
 }
 
 /** The first creature's frames, for places that draw the companion before a choice is known. */

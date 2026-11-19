@@ -62,9 +62,10 @@ test('a saved name is trimmed, shortened, and never empty', () => {
 
 test('creatures unlock at their level, the first one from the start, and no two creatures look the same', () => {
   assert.equal(COMPANION_UNLOCK_LEVEL[COMPANION_SPECIES[0]], 1)
-  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 1)), [true, false, false, false])
-  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 3)), [true, true, true, false])
-  assert.deepEqual(COMPANION_SPECIES.map((species) => speciesUnlocked(species, 4)), [true, true, true, true])
+  assert.deepEqual(COMPANION_SPECIES.filter((species) => speciesUnlocked(species, 1)), ['cinder'])
+  assert.deepEqual(COMPANION_SPECIES.filter((species) => speciesUnlocked(species, 3)), ['cinder', 'sprout', 'moth'])
+  assert.deepEqual(COMPANION_SPECIES.filter((species) => speciesUnlocked(species, 6)), ['cinder', 'sprout', 'moth', 'bolt', 'weevil', 'rime'])
+  assert.equal(COMPANION_SPECIES.every((species) => speciesUnlocked(species, 7)), true)
   // The list is in the order they unlock.
   const levels = COMPANION_SPECIES.map((species) => COMPANION_UNLOCK_LEVEL[species])
   assert.deepEqual(levels, [...levels].sort((a, b) => a - b))
